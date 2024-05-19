@@ -1,6 +1,7 @@
 build/
 .env
 .idea
+cmake*/
 
 # Prerequisites
 *.d
