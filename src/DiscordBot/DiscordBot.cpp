@@ -10,6 +10,7 @@ DiscordBot::DiscordBot(const char* token)
     m_bot.on_ready([this](const dpp::ready_t& event) {
         if (dpp::run_once<struct register_bot_commands>()) {
             m_bot.global_command_create(dpp::slashcommand("ping", "Ping pong!", m_bot.me.id));
+            m_bot.global_command_create(dpp::slashcommand("yippee", "Yippee!", m_bot.me.id));
         }
     });
 }
@@ -24,5 +25,9 @@ void DiscordBot::onSlashCommand(const dpp::slashcommand_t& event)
     if (event.command.get_command_name() == "ping")
     {
         event.reply("Pong!");
+    }
+    else if (event.command.get_command_name() == "yippee")
+    {
+        event.reply("Yippee!");
     }
 }
