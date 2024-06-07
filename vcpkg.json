@@ -1,0 +1,15 @@
+{
+	"dependencies": [
+		{
+			"name": "dpp",
+			"version>=": "10.0.30"
+		},
+		{
+			"name": "libsodium",
+			"version>=": "1.0.20"
+		},
+		"spdlog",
+		"boost-unordered",
+		"mongo-cxx-driver"
+	]
+}

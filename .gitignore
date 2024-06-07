@@ -2,6 +2,7 @@ build/
 .env
 .idea
 cmake*/
+.vs/
 
 # Prerequisites
 *.d
