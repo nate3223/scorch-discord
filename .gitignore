@@ -1,4 +1,6 @@
 build/
+certs/
+vcpkg_installed/
 .env
 .idea
 cmake*/

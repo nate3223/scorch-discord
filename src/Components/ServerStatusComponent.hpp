@@ -41,7 +41,7 @@ struct ServerConfig
 		};
 	}
 
-	value value() const
+	value getValue() const
 	{
 		return make_document(
 			kvp("guildID", (int64_t)guildID),

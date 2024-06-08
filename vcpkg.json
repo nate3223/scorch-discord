@@ -1,15 +1,19 @@
 {
-	"dependencies": [
-		{
-			"name": "dpp",
-			"version>=": "10.0.30"
-		},
-		{
-			"name": "libsodium",
-			"version>=": "1.0.20"
-		},
-		"spdlog",
-		"boost-unordered",
-		"mongo-cxx-driver"
-	]
+  "dependencies": [
+    "boost-unordered",
+    {
+      "name": "dpp",
+      "version>=": "10.0.30"
+    },
+    {
+      "name": "libsodium",
+      "version>=": "1.0.20"
+    },
+    {
+      "name": "mongo-cxx-driver",
+      "version>=": "3.10.1"
+    },
+    "spdlog",
+    "opus"
+  ]
 }

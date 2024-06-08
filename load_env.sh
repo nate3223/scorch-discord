@@ -1,4 +1,1 @@
-#!/bin/sh
-set -a
-. .env
-set +a
+eval export $(cat .env)

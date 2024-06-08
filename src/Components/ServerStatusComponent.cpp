@@ -1,6 +1,7 @@
 #include "ServerStatusComponent.hpp"
 
 #include <dpp/unicode_emoji.h>
+#include <format>
 #include <functional>
 #include <thread>
 #include <chrono>
@@ -28,7 +29,7 @@ namespace
 
 	namespace Database
 	{
-		constexpr auto Name			= "MineCord";
+		constexpr auto Name			= "Scorch";
 		constexpr auto ServerConfig	= "ServerConfig";
 	}
 }
@@ -89,7 +90,7 @@ void ServerStatusComponent::onSetStatusChannel(const dpp::slashcommand_t& event)
 				.guildID = guild,
 				.channelID = channel
 			};
-			client->database(Database::Name)[Database::ServerConfig].insert_one(config.value());
+			client->database(Database::Name)[Database::ServerConfig].insert_one(config.getValue());
 			m_configs[(uint64_t)guild] = std::make_unique<ServerConfig>(std::move(config));
 		}
 		else
