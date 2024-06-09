@@ -1,12 +1,15 @@
 #include "DiscordBot.hpp"
 
 #include "Log.hpp"
+#include "LogComponent.hpp"
 #include "ServerStatusComponent.hpp"
 #include "YippeeComponent.hpp"
 
 #include "MongoDBManager.hpp"
 
+#include <algorithm>
 #include <format>
+#include <thread>
 
 DiscordBot::DiscordBot(const char* token)
 {
@@ -19,19 +22,33 @@ DiscordBot::DiscordBot(const char* token)
 	m_bot->on_form_submit(std::bind_front(&DiscordBot::onFormSubmit, this));
 	m_bot->on_channel_delete(std::bind_front(&DiscordBot::onChannelDelete, this));
 
+	addComponent<LogComponent>();
 	addComponent<YippeeComponent>();
 	addComponent<ServerStatusComponent>();
 }
 
 void DiscordBot::start()
 {
-	m_bot->start(dpp::st_wait);
+	bool expected = false;
+	if (m_running.compare_exchange_strong(expected, true))
+	{
+		m_bot->start(dpp::st_wait);
+	}
+}
+
+void DiscordBot::componentLog(const std::shared_ptr<ComponentLogMessage> message)
+{
+	std::thread t([message, this] {
+		for (const auto& component : m_components)
+			component->onComponentLog(message.get());
+	});
+	t.detach();
 }
 
 template <typename T, typename... Args>
 void DiscordBot::addComponent(Args&&... args)
 {
-	std::unique_ptr<Component> component(new T(*m_bot, std::forward<Args>(args)...));
+	std::unique_ptr<Component> component(new T(*this, std::forward<Args>(args)...));
 
 	for (SlashCommand& slashCommand : component->getSlashCommands())
 	{
@@ -100,13 +117,17 @@ void DiscordBot::onLog(const dpp::log_t& event)
 
 void DiscordBot::onReady(const dpp::ready_t& event)
 {
+	std::vector<dpp::slashcommand> slashCommands;
+	auto backInserter = std::back_inserter(slashCommands);
 	if (dpp::run_once<struct register_bot_commands>()) {
+		
 		for (auto& component : m_components)
 		{
-			for (const SlashCommand& slashCommand : component->getSlashCommands())
-				m_bot->global_command_create(slashCommand.slashCommand);
+			const auto& componentSlashCommands = component->getSlashCommands();
+			std::transform(componentSlashCommands.begin(), componentSlashCommands.end(), std::back_inserter(slashCommands), [](const SlashCommand& command){ return command.slashCommand; });
 		}
 	}
+	m_bot->global_bulk_command_create(slashCommands);
 }
 
 void DiscordBot::onSlashCommand(const dpp::slashcommand_t& event)

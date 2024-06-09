@@ -6,7 +6,7 @@ class YippeeComponent
 	: public Component
 {
 public:
-	YippeeComponent(dpp::cluster& bot);
+	YippeeComponent(DiscordBot& bot);
 
 	void    onYippeeCommand(const dpp::slashcommand_t& event);
 };

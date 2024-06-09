@@ -3,9 +3,11 @@
 #
 cmake_minimum_required (VERSION 3.25)
 
-set(VCPKG_CMAKE_FILE $ENV{VCPKG_CMAKE_FILE})
-include(${VCPKG_CMAKE_FILE})
-set(CMAKE_TOOLCHAIN_FILE "${VCPKG_CMAKE_FILE}" CACHE STRING "Vcpkg toolchain file")
+if(DEFINED $ENV{VCPKG_CMAKE_FILE})
+	set(VCPKG_CMAKE_FILE $ENV{VCPKG_CMAKE_FILE})
+	include(${VCPKG_CMAKE_FILE})
+	set(CMAKE_TOOLCHAIN_FILE "${VCPKG_CMAKE_FILE}" CACHE STRING "Vcpkg toolchain file")
+endif()
 
 # Enable Hot Reload for MSVC compilers if supported.
 if (POLICY CMP0141)
@@ -30,9 +32,10 @@ find_package(unofficial-sodium CONFIG REQUIRED)
 add_executable(${PROJECT_NAME}
     src/main.cpp
     src/DiscordBot/DiscordBot.cpp
+	src/Components/LogComponent.cpp
+	src/Components/ServerStatusComponent.cpp
     src/Components/YippeeComponent.cpp
-    src/Components/ServerStatusComponent.cpp
-	src/Database/MongoDBManager.cpp
+	src/Database/MongoDB/MongoDBManager.cpp
 	src/Database/DatabaseManager.cpp
 	src/Log.cpp
 )
@@ -60,4 +63,5 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     src/Components
     src/DiscordBot
 	src/Database
+	src/Database/MongoDB
 )

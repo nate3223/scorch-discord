@@ -2,6 +2,7 @@
 
 #include "Component.hpp"
 
+#include <atomic>
 #include <boost/unordered/unordered_flat_map.hpp>
 #include <dpp/dpp.h>
 #include <memory>
@@ -15,6 +16,11 @@ public:
 
 	void	start();
 
+	void	componentLog(const std::shared_ptr<ComponentLogMessage> message);
+
+	dpp::cluster&	operator*() const { return *m_bot; }
+	dpp::cluster*	operator->() const { return m_bot.get(); }
+
 private:
 	template <typename T, typename... Args>
 	void	addComponent(Args&&... args);
@@ -27,6 +33,7 @@ private:
 	void	onFormSubmit(const dpp::form_submit_t& event);
 	void	onChannelDelete(const dpp::channel_delete_t& event);
 
+	std::atomic_bool											m_running{false};
 	std::unique_ptr<dpp::cluster>								m_bot;
 	std::vector<std::unique_ptr<Component>>						m_components;
 	boost::unordered_flat_map<std::string, SlashFunction>		m_slashCommands;

@@ -1,8 +1,8 @@
 #pragma once
 
-#include <dpp/dpp.h>
 
 #include <algorithm>
+#include <dpp/dpp.h>
 #include <functional>
 #include <string>
 #include <vector>
@@ -35,10 +35,49 @@ struct FormCommand
 	FormFunction formFunction;
 };
 
+class ComponentLogMessage
+{
+public:
+	ComponentLogMessage(const std::string& message) : message(message) {}
+	virtual ~ComponentLogMessage() = default;
+
+	std::string	message;
+};
+
+class BroadcastMessage : public ComponentLogMessage
+{
+public:
+	using ComponentLogMessage::ComponentLogMessage;
+};
+
+class GuildMessage : public ComponentLogMessage
+{
+public:
+	GuildMessage(const std::string& message, const dpp::snowflake guildID) : ComponentLogMessage(message), guildID(guildID) {}
+	dpp::snowflake	guildID;
+};
+
+class UserEmbedMessage : public ComponentLogMessage
+{
+public:
+	UserEmbedMessage(const std::string& message, const dpp::snowflake guildID, const dpp::user& user)
+		: ComponentLogMessage(message)
+		, guildID(guildID)
+		, user(user)
+	{
+	}
+	dpp::snowflake	guildID;
+	dpp::user		user;
+	std::vector<dpp::embed_field>	fields;
+};
+
+class DiscordBot;
+
 class Component
 {
 public:
-	explicit Component(dpp::cluster& bot) : m_bot(bot) {}
+	explicit Component(DiscordBot& bot) : m_bot(bot) {}
+	virtual ~Component() = default;
 
 	std::vector<SlashCommand>	getSlashCommands()	{ return m_slashCommands; }
 	std::vector<ButtonCommand>  getButtonCommands()	{ return m_buttonCommands; }
@@ -46,11 +85,14 @@ public:
 	std::vector<FormCommand>	getFormCommands()	{ return m_formCommands; }
 
 	virtual void				onChannelDelete(const dpp::channel_delete_t& event)	{}
+	virtual void				onComponentLog(const ComponentLogMessage* message) {}
 
 protected:
-	dpp::cluster&				m_bot;
+	DiscordBot&					m_bot;
 	std::vector<SlashCommand>	m_slashCommands;
 	std::vector<ButtonCommand>	m_buttonCommands;
 	std::vector<SelectCommand>	m_selectCommands;
 	std::vector<FormCommand>	m_formCommands;
 };
+
+#include "DiscordBot.hpp"

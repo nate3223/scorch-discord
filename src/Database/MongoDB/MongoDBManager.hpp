@@ -8,11 +8,6 @@
 #include <mongocxx/pool.hpp>
 #include <mongocxx/uri.hpp>
 
-class MongoDBClient
-{
-
-};
-
 class MongoDBManager
 	: public DatabaseManager::Database
 {
