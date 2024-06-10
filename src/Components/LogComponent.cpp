@@ -79,7 +79,9 @@ void LogComponent::onSetLogChannel(const dpp::slashcommand_t& event)
 
 		std::string msg(std::format("Log channel changed to <#{}>", channel.str()));
 		event.edit_original_response(dpp::message(msg));
-		m_bot.componentLog(std::make_shared<UserEmbedMessage>(msg, guild, event.command.usr));
+		auto logMessage = std::make_shared<GuildEmbedMessage>(msg, guild);
+		logMessage->user = event.command.usr;
+		m_bot.componentLog(logMessage);
 	});
 
 }
@@ -103,19 +105,24 @@ void LogComponent::onComponentLog(const ComponentLogMessage* message)
 	std::lock_guard guard(m_mutex);
 	auto client = m_databasePool.acquire();
 
-	if (const auto userEmbedMessage = dynamic_cast<const UserEmbedMessage*>(message); userEmbedMessage != nullptr)
+	if (const auto guildEmbedMessage = dynamic_cast<const GuildEmbedMessage*>(message); guildEmbedMessage != nullptr)
 	{
-		if (!m_configs.contains(userEmbedMessage->guildID))
+		if (!m_configs.contains(guildEmbedMessage->guildID))
 			return;
 
-		const auto& config = *m_configs[userEmbedMessage->guildID];
+		const auto& config = *m_configs[guildEmbedMessage->guildID];
 		dpp::embed embed = dpp::embed();
-		embed.set_author(userEmbedMessage->user.format_username(), "", userEmbedMessage->user.get_avatar_url());
-		embed.set_description(userEmbedMessage->message);
-		embed.set_footer(std::to_string((int64_t)userEmbedMessage->user.id), "");
+
+		embed.set_description(guildEmbedMessage->message);
 		embed.set_timestamp(time(0));
 
-		for (const auto& field : userEmbedMessage->fields)
+		if (guildEmbedMessage->user.has_value())
+		{
+			embed.set_author(guildEmbedMessage->user->format_username(), "", guildEmbedMessage->user->get_avatar_url());
+			embed.set_footer(std::to_string((int64_t)guildEmbedMessage->user->id), "");
+		}
+
+		for (const auto& field : guildEmbedMessage->fields)
 			embed.fields.push_back(std::move(field));
 
 		m_bot->message_create(dpp::message(config.m_channelID, std::move(embed)));

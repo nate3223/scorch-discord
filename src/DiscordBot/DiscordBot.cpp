@@ -21,6 +21,7 @@ DiscordBot::DiscordBot(const char* token)
 	m_bot->on_select_click(std::bind_front(&DiscordBot::onSelectClick, this));
 	m_bot->on_form_submit(std::bind_front(&DiscordBot::onFormSubmit, this));
 	m_bot->on_channel_delete(std::bind_front(&DiscordBot::onChannelDelete, this));
+	m_bot->on_message_delete(std::bind_front(&DiscordBot::onMessageDelete, this));
 
 	addComponent<LogComponent>();
 	addComponent<YippeeComponent>();
@@ -120,7 +121,6 @@ void DiscordBot::onReady(const dpp::ready_t& event)
 	std::vector<dpp::slashcommand> slashCommands;
 	auto backInserter = std::back_inserter(slashCommands);
 	if (dpp::run_once<struct register_bot_commands>()) {
-		
 		for (auto& component : m_components)
 		{
 			const auto& componentSlashCommands = component->getSlashCommands();
@@ -170,5 +170,11 @@ void DiscordBot::onChannelDelete(const dpp::channel_delete_t& event)
 {
 	for (auto& component : m_components)
 		component->onChannelDelete(event);
+}
+
+void DiscordBot::onMessageDelete(const dpp::message_delete_t& event)
+{
+	for (auto& component : m_components)
+		component->onMessageDelete(event);
 }
 

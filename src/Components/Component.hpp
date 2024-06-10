@@ -57,17 +57,16 @@ public:
 	dpp::snowflake	guildID;
 };
 
-class UserEmbedMessage : public ComponentLogMessage
+class GuildEmbedMessage : public ComponentLogMessage
 {
 public:
-	UserEmbedMessage(const std::string& message, const dpp::snowflake guildID, const dpp::user& user)
+	GuildEmbedMessage(const std::string& message, const dpp::snowflake guildID)
 		: ComponentLogMessage(message)
 		, guildID(guildID)
-		, user(user)
 	{
 	}
 	dpp::snowflake	guildID;
-	dpp::user		user;
+	std::optional<dpp::user>		user;
 	std::vector<dpp::embed_field>	fields;
 };
 
@@ -85,6 +84,7 @@ public:
 	std::vector<FormCommand>	getFormCommands()	{ return m_formCommands; }
 
 	virtual void				onChannelDelete(const dpp::channel_delete_t& event)	{}
+	virtual void				onMessageDelete(const dpp::message_delete_t& event) {}
 	virtual void				onComponentLog(const ComponentLogMessage* message) {}
 
 protected:

@@ -32,6 +32,7 @@ private:
 	void	onSelectClick(const dpp::select_click_t& event);
 	void	onFormSubmit(const dpp::form_submit_t& event);
 	void	onChannelDelete(const dpp::channel_delete_t& event);
+	void	onMessageDelete(const dpp::message_delete_t& event);
 
 	std::atomic_bool											m_running{false};
 	std::unique_ptr<dpp::cluster>								m_bot;
