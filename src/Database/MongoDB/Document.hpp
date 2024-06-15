@@ -10,6 +10,10 @@ using bsoncxx::builder::basic::kvp;
 using bsoncxx::builder::basic::make_document;
 using bsoncxx::builder::basic::make_array;
 
+namespace MongoDB
+{
+	constexpr char DATABASE_NAME[]	= "Scorch";
+}
 
 template <typename T>
 class Document
@@ -19,41 +23,12 @@ public:
 
 	virtual bsoncxx::document::value getValue() const = 0;
 
-	static std::vector<T> ContructVector(const bsoncxx::array::view& arr)
-	{
-		std::vector<T> items;
-		for (const auto& element : arr)
-		{
-			if (element.type() == type::k_document)
-				items.emplace_back(element.get_document());
-		}
-		return items;
-	}
+	template <typename... Args>
+	static std::vector<T> ContructVector(const bsoncxx::array::view& arr, Args&&... arg);
 
-	static std::vector<std::unique_ptr<T>> ContructUniqueVector(const bsoncxx::array::view& arr)
-	{
-		std::vector<std::unique_ptr<T>> items;
-		for (const auto& element : arr)
-		{
-			if (element.type() == type::k_document)
-				items.push_back(std::make_unique<T>(element.get_document()));
-		}
-		return items;
-	}
+	template <typename... Args>
+	static std::vector<std::unique_ptr<T>> ContructUniqueVector(const bsoncxx::array::view& arr, Args&&... args);
 
-	static array ConstructArray(const std::vector<T>& vec)
-	{
-		array array;
-		for (const auto& item : vec)
-			array.append(item.getValue());
-		return array;
-	}
-
-	static array ConstructArray(const std::vector<std::unique_ptr<T>>& vec)
-	{
-		array array;
-		for (const auto& item : vec)
-			array.append(item->getValue());
-		return array;
-	}
+	static array ConstructArray(const std::vector<T>& vec);
+	static array ConstructArray(const std::vector<std::unique_ptr<T>>& vec);
 };

@@ -31,13 +31,23 @@ find_package(unofficial-sodium CONFIG REQUIRED)
 # Create an executable
 add_executable(${PROJECT_NAME}
     src/main.cpp
-    src/DiscordBot/DiscordBot.cpp
-	src/Components/LogComponent.cpp
-	src/Components/ServerStatusComponent.cpp
-    src/Components/YippeeComponent.cpp
-	src/Database/MongoDB/MongoDBManager.cpp
-	src/Database/DatabaseManager.cpp
 	src/Log.cpp
+
+    src/DiscordBot/DiscordBot.cpp
+
+	src/Components/Log/LogComponent.cpp
+	src/Components/Log/LogConfig.cpp
+
+	src/Components/ServerStatus/Server.cpp
+	src/Components/ServerStatus/ServerConfig.cpp
+	src/Components/ServerStatus/ServerStatusComponent.cpp
+	src/Components/ServerStatus/StatusWidget.cpp
+
+    src/Components/Yippee/YippeeComponent.cpp
+
+	src/Database/DatabaseManager.cpp
+	src/Database/MongoDB/Document.cpp
+	src/Database/MongoDB/MongoDBManager.cpp
 )
 
 set_target_properties(${PROJECT_NAME} PROPERTIES
@@ -57,10 +67,15 @@ if(NOT TARGET spdlog)
 endif()
 target_link_libraries(${PROJECT_NAME} PRIVATE spdlog::spdlog $<$<BOOL:${MINGW}>:ws2_32>)
 
+add_compile_options(-Wall -Wextra -Wpedantic -Wpessimizing-move -Wredundant-move)
 
 target_include_directories(${PROJECT_NAME} PRIVATE
     src
     src/Components
+	src/Components/Common
+	src/Components/Log
+	src/Components/ServerStatus
+	src/Components/Yippee
     src/DiscordBot
 	src/Database
 	src/Database/MongoDB

@@ -1,6 +1,5 @@
 #pragma once
 
-
 #include <algorithm>
 #include <dpp/dpp.h>
 #include <functional>

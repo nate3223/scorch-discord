@@ -51,12 +51,6 @@ namespace
 		constexpr auto PinnedServer		= "StatusWidgetSettingPinnedServerOption";
 		constexpr auto NoChannel		= "No status channel is set for this guild. You shouldn't be able to press this.";
 	}
-
-	namespace Database
-	{
-		constexpr auto Name			= "Scorch";
-		constexpr auto ServerConfig	= "ServerConfig";
-	}
 }
 
 ServerStatusComponent::ServerStatusComponent(DiscordBot& bot)
@@ -69,7 +63,7 @@ ServerStatusComponent::ServerStatusComponent(DiscordBot& bot)
 		dpp::slashcommand("setstatuschannel", "Sets the channel where the server status is displayed.", m_bot->me.id)
 			.add_option(
 				dpp::command_option(dpp::co_channel, SetStatusChannel::Channel, "Channel to display server status", true)
-				.add_channel_type(dpp::CHANNEL_TEXT)
+					.add_channel_type(dpp::CHANNEL_TEXT)
 			)
 			.set_default_permissions(0)
 	);
@@ -132,12 +126,15 @@ ServerStatusComponent::ServerStatusComponent(DiscordBot& bot)
 
 	{
 		auto client = m_databasePool.acquire();
-		for (auto& doc : client->database(Database::Name)[Database::ServerConfig].find({}))
+		for (auto& config : ServerConfig::FindAll(*client))
+		{	
+			const auto guildID = config->m_guildID;
+			m_configs.store(guildID, std::move(config));
+		}
+		for (auto& server : Server::FindAll(*client))
 		{
-			auto config = ServerConfig(doc);
-			if (config.m_statusWidget.m_activeServerID.has_value())
-				config.m_statusWidget.m_activeServer = std::find_if(config.m_servers.begin(), config.m_servers.end(), [serverID = config.m_statusWidget.m_activeServerID](const auto& server) { return server->m_id == *serverID; })->get();
-			m_configs[config.m_guildID] = std::make_unique<ServerConfig>(std::move(config));
+			const auto id = server->m_id;
+			m_servers.store(id, std::move(server));
 		}
 	}
 }
@@ -153,34 +150,37 @@ void ServerStatusComponent::onSetStatusChannel(const dpp::slashcommand_t& event)
 			return;
 		}
 
-		std::lock_guard guard(m_mutex);
-		auto client = m_databasePool.acquire();
-
-		dpp::snowflake guild = event.command.guild_id;
+		const auto guild = (uint64_t)event.command.guild_id;
 
 		ServerConfig* config;
-		if (!m_configs.contains((uint64_t)guild))
+		std::unique_ptr<std::unique_lock<std::shared_mutex>> lock;
+		if (config = m_configs.find(guild); !config)
 		{
 			config = new ServerConfig();
+			lock = std::make_unique<std::unique_lock<std::shared_mutex>>(config->m_mutex);
+
 			config->m_guildID = guild;
 			config->m_channelID = channel;
-			client->database(Database::Name)[Database::ServerConfig].insert_one(config->getValue());
-			m_configs[(uint64_t)guild]= std::unique_ptr<ServerConfig>(config);
-			config->m_statusWidget = StatusWidget();
+
+			{
+				auto client = m_databasePool.acquire();
+				config->insertIntoDatabase(*client);
+			}
+
+			m_configs.store(guild, std::unique_ptr<ServerConfig>(config));
 		}
 		else
 		{
-			config = m_configs[(uint64_t)guild].get();
-
-			// DELETE ITSELF IF THE CALLBACK COMES BACK AND THE MESSAGE ID IS GONE
+			lock = std::make_unique<std::unique_lock<std::shared_mutex>>(config->m_mutex);
 			if (config->m_statusWidget.m_messageID.has_value())
 				m_bot->message_delete(*config->m_statusWidget.m_messageID, config->m_channelID);
 
 			config->m_channelID = channel;
-			client->database(Database::Name)[Database::ServerConfig].update_one(
-				make_document(kvp("guildID", (int64_t)config->m_guildID)),
-				make_document(kvp("$set", make_document(kvp("channelID", (int64_t)config->m_channelID))))
-			);
+
+			{
+				auto client = m_databasePool.acquire();
+				config->updateChannelID(*client);
+			}
 		}
 
 		const uint64_t commandID = (uint64_t)event.command.id;
@@ -193,32 +193,31 @@ void ServerStatusComponent::onSetStatusChannel(const dpp::slashcommand_t& event)
 			}
 
 			dpp::message msg = callback.get<dpp::message>();
-			
-			std::lock_guard guard(m_mutex);
-			auto client = m_databasePool.acquire();
 
-			if (!m_configs.contains(guild))
+			ServerConfig* config;
+			if (config = m_configs.find(guild); !config)
 			{
 				m_bot->message_delete(msg.id, msg.channel_id);
 				//abort
 				return;
 			}
 
-			auto& config = *m_configs[(uint64_t)guild];
+			std::unique_lock lock(config->m_mutex);
 
-			if (!config.m_statusWidget.m_commandID.has_value() || *config.m_statusWidget.m_commandID != commandID)
+			if (!config->m_statusWidget.m_commandID.has_value() || *config->m_statusWidget.m_commandID != commandID)
 			{
 				m_bot->message_delete(msg.id, msg.channel_id);
 				//abort
 				return;
 			}
 
-			config.m_statusWidget.m_messageID = (uint64_t)msg.id;
-			config.m_statusWidget.m_commandID.reset();
-			client->database(Database::Name)[Database::ServerConfig].update_one(
-				make_document(kvp("guildID", (int64_t)config.m_guildID)),
-				make_document(kvp("$set", make_document(kvp("statusWidget", config.m_statusWidget.getValue()))))
-			);
+			config->m_statusWidget.m_messageID = (uint64_t)msg.id;
+			config->m_statusWidget.m_commandID.reset();
+
+			{
+				auto client = m_databasePool.acquire();
+				config->updateStatusWidget(*client);
+			}
 		});
 
 		std::string reply = std::format("Server status channel changed to <#{}>", channel.str());
@@ -231,11 +230,8 @@ void ServerStatusComponent::onSetStatusChannel(const dpp::slashcommand_t& event)
 
 void ServerStatusComponent::onAddServerCommand(const dpp::slashcommand_t& event)
 {
-	std::lock_guard guard(m_mutex);
-	auto client = m_databasePool.acquire();
-
-	const auto guildID = event.command.guild_id;
-	if (!m_configs.contains(guildID))
+	const auto guild = (uint64_t)event.command.guild_id;
+	if (!m_configs.contains(guild))
 	{
 		event.reply(dpp::message(AddServer::NoChannel).set_flags(dpp::m_ephemeral));
 		return;
@@ -246,10 +242,8 @@ void ServerStatusComponent::onAddServerCommand(const dpp::slashcommand_t& event)
 
 void ServerStatusComponent::onAddServerButton(const dpp::button_click_t& event)
 {
-	std::lock_guard guard(m_mutex);
-	auto client = m_databasePool.acquire();
+	const auto guild = (uint64_t)event.command.guild_id;
 
-	const auto guild = event.command.guild_id;
 	if (!m_configs.contains(guild))
 	{
 		event.reply(dpp::message(RemoveServer::NoChannel).set_flags(dpp::m_ephemeral));
@@ -268,15 +262,16 @@ void ServerStatusComponent::onAddServerButton(const dpp::button_click_t& event)
 
 void ServerStatusComponent::onAddServerForm(const dpp::form_submit_t& event)
 {
-	std::lock_guard guard(m_mutex);
-	auto client = m_databasePool.acquire();
+	const auto guild = (uint64_t)event.command.guild_id;
 
-	const auto guild = event.command.guild_id;
-	if (!m_configs.contains(guild))
+	ServerConfig* config;
+	if (config = m_configs.find(guild), !config)
 	{
 		event.reply(dpp::message(AddServer::NoChannel).set_flags(dpp::m_ephemeral));
 		return;
 	}
+
+	std::unique_lock lock(config->m_mutex);
 
 	dpp::channel* channel = dpp::find_channel(event.command.channel_id);
 	if (channel == nullptr || !channel->get_user_permissions(&event.command.usr).can(dpp::p_administrator))
@@ -285,25 +280,31 @@ void ServerStatusComponent::onAddServerForm(const dpp::form_submit_t& event)
 		return;
 	}
 	
-	ServerConfig& config = *m_configs[(uint64_t)guild];
-	if (config.m_servers.size() >= ServerSelect::MaxServers)
+	if (config->m_serverIDs.size() >= ServerSelect::MaxServers)
 	{
 		event.reply(dpp::message(std::format("Exceeded the maximum number of servers ({})!", ServerSelect::MaxServers)).set_flags(dpp::m_ephemeral));
 		return;
 	}
 
-	const auto serverName = std::get<std::string>(event.components[0].components[0].value);
-	const auto address = std::get<std::string>(event.components[1].components[0].value);
-		
-	config.m_servers.emplace_back(std::make_unique<Server>((uint64_t)event.command.id, serverName, address));
-	client->database(Database::Name)[Database::ServerConfig].update_one(
-		make_document(kvp("guildID", (int64_t)config.m_guildID)),
-		make_document(kvp("$set", make_document(kvp("servers", Server::ConstructArray(config.m_servers)))))
-	);
-	updateServerStatusWidget(config);
+	const auto id = (uint64_t)event.command.id;
+	const std::string& serverName = std::get<std::string>(event.components[0].components[0].value);
+	const std::string& address = std::get<std::string>(event.components[1].components[0].value);
+
+	Server* server = new Server(id, serverName, address);
+	m_servers.store(id, std::unique_ptr<Server>(server));
+
+	config->m_serverIDs.push_back(id);
+
+	{
+		auto client = m_databasePool.acquire();
+		config->updateServerIDs(*client);
+		server->insertIntoDatabase(*client);
+	}
+
+	updateServerStatusWidget(*config);
 
 	event.reply(dpp::message("Server added successfully!").set_flags(dpp::m_ephemeral));
-	auto logMessage = std::make_shared<GuildEmbedMessage>("Added new server", event.command.guild_id);
+	auto logMessage = std::make_shared<GuildEmbedMessage>("Added new server", config->m_guildID);
 	logMessage->user = event.command.usr;
 	logMessage->fields.emplace_back("Name", serverName);
 	logMessage->fields.emplace_back("Address", address);
@@ -312,18 +313,18 @@ void ServerStatusComponent::onAddServerForm(const dpp::form_submit_t& event)
 
 void ServerStatusComponent::onRemoveServerCommand(const dpp::slashcommand_t& event)
 {
-	std::lock_guard guard(m_mutex);
-	auto client = m_databasePool.acquire();
+	const auto guild = (uint64_t)event.command.guild_id;
 
-	const auto guild = event.command.guild_id;
-	if (!m_configs.contains(guild))
+	ServerConfig* config;
+	if (config = m_configs.find(guild); !config)
 	{
 		event.reply(dpp::message(RemoveServer::NoChannel).set_flags(dpp::m_ephemeral));
 		return;
 	}
 
-	ServerConfig& config = *m_configs[(uint64_t)guild];
-	if (config.m_servers.empty())
+	std::shared_lock lock(config->m_mutex);
+
+	if (config->m_serverIDs.empty())
 	{
 		event.reply(dpp::message("No servers to remove!").set_flags(dpp::m_ephemeral));
 		return;
@@ -331,21 +332,22 @@ void ServerStatusComponent::onRemoveServerCommand(const dpp::slashcommand_t& eve
 
 	event.reply(dpp::message()
 		.set_flags(dpp::m_ephemeral)
-		.add_component(getRemoveServerComponent(config))
+		.add_component(getRemoveServerComponent(*config))
 	);
 }
 
 void ServerStatusComponent::onRemoveServerButton(const dpp::button_click_t& event)
 {
-	std::lock_guard guard(m_mutex);
-	auto client = m_databasePool.acquire();
+	const auto guild = (uint64_t)event.command.guild_id;
 
-	const auto guild = event.command.guild_id;
-	if (!m_configs.contains(guild))
+	ServerConfig* config;
+	if (config = m_configs.find(guild); !config)
 	{
 		event.reply(dpp::message(RemoveServer::NoChannel).set_flags(dpp::m_ephemeral));
 		return;
 	}
+
+	std::shared_lock lock(config->m_mutex);
 
 	dpp::channel* channel = dpp::find_channel(event.command.channel_id);
 	if (channel == nullptr || !channel->get_user_permissions(&event.command.usr).can(dpp::p_administrator))
@@ -354,8 +356,7 @@ void ServerStatusComponent::onRemoveServerButton(const dpp::button_click_t& even
 		return;
 	}
 
-	ServerConfig& config = *m_configs[(uint64_t)guild];
-	if (config.m_servers.empty())
+	if (config->m_serverIDs.empty())
 	{
 		event.reply(dpp::message("No servers to remove!").set_flags(dpp::m_ephemeral));
 		return;
@@ -363,26 +364,26 @@ void ServerStatusComponent::onRemoveServerButton(const dpp::button_click_t& even
 
 	event.reply(dpp::message()
 		.set_flags(dpp::m_ephemeral)
-		.add_component(getRemoveServerComponent(config))
+		.add_component(getRemoveServerComponent(*config))
 	);
 }
 
 void ServerStatusComponent::onRemoveServerSelect(const dpp::select_click_t& event)
 {
-	std::vector<std::unique_ptr<Server>> activeServers;
+	std::vector<uint64_t> activeServers;
 	std::vector<std::string> serversToDelete(event.values);
 	std::string deletedServers;
 	const auto guild = event.command.guild_id;
 	
 	{
-		std::lock_guard guard(m_mutex);
-		auto client = m_databasePool.acquire();
-
-		if (!m_configs.contains(guild))
+		ServerConfig* config;
+		if (config = m_configs.find(guild); !config)
 		{
 			event.reply(dpp::message(RemoveServer::NoChannel).set_flags(dpp::m_ephemeral));
 			return;
 		}
+
+		std::unique_lock lock(config->m_mutex);
 
 		dpp::channel* channel = dpp::find_channel(event.command.channel_id);
 		if (channel == nullptr || !channel->get_user_permissions(&event.command.usr).can(dpp::p_administrator))
@@ -391,34 +392,39 @@ void ServerStatusComponent::onRemoveServerSelect(const dpp::select_click_t& even
 			return;
 		}
 
-		ServerConfig& config = *m_configs[(uint64_t)guild];
 		bool isPinnedRemoved = false;
-
-		std::copy_if(std::make_move_iterator(config.m_servers.begin()), std::make_move_iterator(config.m_servers.end()), std::back_inserter(activeServers), [&serversToDelete, &deletedServers, &config, &isPinnedRemoved](const auto& server){
-			if (const auto it = std::find(serversToDelete.begin(), serversToDelete.end(), std::to_string(server->m_id)); it != serversToDelete.end())
+		std::vector<uint64_t> deletedIDs(event.values.size());
+		std::copy_if(config->m_serverIDs.begin(), config->m_serverIDs.end(), std::back_inserter(activeServers), [&serversToDelete, &deletedServers, config, &isPinnedRemoved, &deletedIDs, this](const auto serverID){
+			if (const auto it = std::find(serversToDelete.begin(), serversToDelete.end(), std::to_string(serverID)); it != serversToDelete.end())
 			{
-				if (config.m_statusWidget.m_activeServerID.has_value() && server->m_id == config.m_statusWidget.m_activeServerID)
+				if (config->m_statusWidget.m_activeServerID.has_value() && serverID == config->m_statusWidget.m_activeServerID)
 					isPinnedRemoved = true;
 					
 				serversToDelete.erase(it);
-				deletedServers += std::format("  - {}\n", server->m_name);
+				deletedIDs.push_back(serverID);
+				deletedServers += std::format("  - {}\n", m_servers.find(serverID)->m_name);
 				return false;
 			}
 		
 			return true;
 		});
 
-		config.m_servers = std::move(activeServers);
-		client->database(Database::Name)[Database::ServerConfig].update_one(
-			make_document(kvp("guildID", (int64_t)config.m_guildID)),
-			make_document(kvp("$set", make_document(kvp("servers", Server::ConstructArray(config.m_servers)))))
-		);
-		if (isPinnedRemoved)
+		config->m_serverIDs = std::move(activeServers);
+
 		{
-			config.m_statusWidget.m_activeServerID.reset();
-			config.m_statusWidget.m_activeServer = nullptr;
+			auto client = m_databasePool.acquire();
+			config->updateServerIDs(*client);
+			if (isPinnedRemoved)
+			{
+				config->m_statusWidget.m_activeServerID.reset();
+				config->m_statusWidget.m_activeServer = nullptr;
+				config->updateStatusWidget(*client);
+			}
+			Server::BulkRemoveFromDatabase(deletedIDs, *client);
+			m_servers.bulkRemove(deletedIDs);
 		}
-		updateServerStatusWidget(config);
+		
+		updateServerStatusWidget(*config);
 	}
 
 	std::string notFoundServers;
@@ -473,15 +479,16 @@ void ServerStatusComponent::onServerStopButton(const dpp::button_click_t& event)
 
 void ServerStatusComponent::onServerSettingsButton(const dpp::button_click_t& event)
 {
-	std::lock_guard guard(m_mutex);
-	auto client = m_databasePool.acquire();
+	const auto guild = (uint64_t)event.command.guild_id;
 
-	const auto guild = event.command.guild_id;
-	if (!m_configs.contains(guild))
+	ServerConfig* config;
+	if (config = m_configs.find(guild); !config)
 	{
 		event.reply(dpp::message(RemoveServer::NoChannel).set_flags(dpp::m_ephemeral));
 		return;
 	}
+
+	std::shared_lock lock(config->m_mutex);
 
 	dpp::channel* channel = dpp::find_channel(event.command.channel_id);
 	if (channel == nullptr || !channel->get_user_permissions(&event.command.usr).can(dpp::p_administrator))
@@ -490,13 +497,12 @@ void ServerStatusComponent::onServerSettingsButton(const dpp::button_click_t& ev
 		return;
 	}
 
-	const auto& config = *m_configs[guild];
-	auto msg = dpp::message().set_flags(dpp::m_ephemeral);
-	if (!config.m_servers.empty())
+	dpp::message msg = dpp::message().set_flags(dpp::m_ephemeral);
+	if (!config->m_serverIDs.empty())
 	{
 		msg.add_component(
 			dpp::component().add_component(
-				getServerSelectMenuComponent(config)
+				getServerSelectMenuComponent(*config)
 				.set_id(ServerStatusWidget::PinnedServer)
 				.set_placeholder("Select a server to pin")
 			)
@@ -520,15 +526,16 @@ void ServerStatusComponent::onServerSettingsButton(const dpp::button_click_t& ev
 
 void ServerStatusComponent::onPinnedServerSelect(const dpp::select_click_t& event)
 {
-	std::lock_guard guard(m_mutex);
-	auto client = m_databasePool.acquire();
+	const auto guild = (uint64_t)event.command.guild_id;
 
-	const auto guild = event.command.guild_id;
-	if (!m_configs.contains(guild))
+	ServerConfig* config;
+	if (config = m_configs.find(guild); !config)
 	{
 		event.reply(dpp::message("You must set a status channel before selecting a pinned server!").set_flags(dpp::m_ephemeral));
 		return;
 	}
+
+	std::unique_lock lock(config->m_mutex);
 
 	dpp::channel* channel = dpp::find_channel(event.command.channel_id);
 	if (channel == nullptr || !channel->get_user_permissions(&event.command.usr).can(dpp::p_administrator))
@@ -537,50 +544,51 @@ void ServerStatusComponent::onPinnedServerSelect(const dpp::select_click_t& even
 		return;
 	}
 
-	auto& config = *m_configs[guild];
-
-	if (config.m_statusWidget.m_commandID.has_value())
+	if (config->m_statusWidget.m_commandID.has_value())
 	{
 		event.reply(dpp::message("Server status widget is still building, please try again!").set_flags(dpp::m_ephemeral));
 		return;
 	}
 
 	const uint64_t serverID = std::stoull(event.values[0]);
-	if (config.m_statusWidget.m_activeServerID.has_value() && serverID == *config.m_statusWidget.m_activeServerID)
+	if (config->m_statusWidget.m_activeServerID.has_value() && serverID == *config->m_statusWidget.m_activeServerID)
 	{
 		event.reply(dpp::message("Server is already pinned!").set_flags(dpp::m_ephemeral));
 		return;
 	}
 
-	auto it = std::find_if(config.m_servers.begin(), config.m_servers.end(), [serverID](const auto& server){ return server->m_id == serverID; });
-	if (it == config.m_servers.end())
+	Server* server;
+	if (server = m_servers.find(serverID); !server)
 	{
 		event.reply(dpp::message("Could not find selected server, it was probably deleted!").set_flags(dpp::m_ephemeral));
 		return;
 	}
 
-	config.m_statusWidget.m_activeServerID = (*it)->m_id;
-	config.m_statusWidget.m_activeServer = it->get();
-	updateServerStatusWidget(config);
-	client->database(Database::Name)[Database::ServerConfig].update_one(
-		make_document(kvp("guildID", (int64_t)config.m_guildID)),
-		make_document(kvp("$set", make_document(kvp("statusWidget", config.m_statusWidget.getValue()))))
-	);
+	config->m_statusWidget.m_activeServerID = server->m_id;
+	config->m_statusWidget.m_activeServer = server;
+
+	{
+		auto client = m_databasePool.acquire();
+		config->updateStatusWidget(*client);
+	}
+
+	updateServerStatusWidget(*config);
 
 	event.reply("");
 }
 
 void ServerStatusComponent::onSelectQueryServer(const dpp::select_click_t& event)
 {
-	std::lock_guard guard(m_mutex);
-	auto client = m_databasePool.acquire();
+	const auto guild = (uint64_t)event.command.guild_id;
 
-	const auto guild = event.command.guild_id;
-	if (!m_configs.contains(guild))
+	ServerConfig* config;
+	if (config = m_configs.find(guild); !config)
 	{
 		event.reply(dpp::message("You must set a status channel before querying a server!").set_flags(dpp::m_ephemeral));
 		return;
 	}
+
+	std::shared_lock lock(config->m_mutex);
 
 	dpp::channel* channel = dpp::find_channel(event.command.channel_id);
 	if (channel == nullptr || !channel->get_user_permissions(&event.command.usr).can(dpp::p_administrator))
@@ -589,12 +597,9 @@ void ServerStatusComponent::onSelectQueryServer(const dpp::select_click_t& event
 		return;
 	}
 
-	auto& config = *m_configs[guild];
-
-
 	const uint64_t serverID = std::stoull(event.values[0]);
-	auto it = std::find_if(config.m_servers.begin(), config.m_servers.end(), [serverID](const auto& server) { return server->m_id == serverID; });
-	if (it == config.m_servers.end())
+	Server* server;
+	if (server = m_servers.find(serverID); !server)
 	{
 		event.reply(dpp::message("Could not find selected server, it was probably deleted!").set_flags(dpp::m_ephemeral));
 		return;
@@ -602,7 +607,7 @@ void ServerStatusComponent::onSelectQueryServer(const dpp::select_click_t& event
 
 	event.reply(dpp::message()
 		.add_embed(
-			getServerStatusEmbed(**it)
+			getServerStatusEmbed(*server)
 		)
 		.set_flags(dpp::m_ephemeral)
 	);
@@ -646,7 +651,7 @@ dpp::interaction_modal_response ServerStatusComponent::getAddServerModal()
 		.set_required(true)
 	);
 
-	return std::move(modal);
+	return modal;
 }
 
 dpp::component ServerStatusComponent::getRemoveServerComponent(const ServerConfig& config)
@@ -655,18 +660,23 @@ dpp::component ServerStatusComponent::getRemoveServerComponent(const ServerConfi
 		getServerSelectMenuComponent(config)
 		.set_id(RemoveServer::SelectOption)
 		.set_min_values(1)
-		.set_max_values(config.m_servers.size())
+		.set_max_values(config.m_serverIDs.size())
 		.set_placeholder(RemoveServer::Placeholder)
 	);
 }
 
 dpp::component ServerStatusComponent::getServerSelectMenuComponent(const ServerConfig& config)
 {
-	auto selectMenuComponent = dpp::component().set_type(dpp::cot_selectmenu);
-	for (const auto& server : config.m_servers)
+	dpp::component selectMenuComponent = dpp::component().set_type(dpp::cot_selectmenu);
+	for (const auto& serverID : config.m_serverIDs)
+	{
+		const Server* server;
+		if (server = m_servers.find(serverID); !server)
+			continue;
 		selectMenuComponent.add_select_option(dpp::select_option(server->m_name, std::to_string(server->m_id)));
+	}
 	
-	return std::move(selectMenuComponent);
+	return selectMenuComponent;
 }
 
 dpp::embed ServerStatusComponent::getServerStatusEmbed(const Server& server)
@@ -720,7 +730,7 @@ dpp::message ServerStatusComponent::getServerStatusWidget(const ServerConfig& co
 	);
 	message.add_component(buttonRow);
 
-	if (config.m_statusWidget.m_activeServerID.has_value() && config.m_servers.size() > 1)
+	if (config.m_statusWidget.m_activeServerID.has_value() && config.m_serverIDs.size() > 1)
 	{
 		message.add_component(
 			dpp::component().add_component(
@@ -736,34 +746,46 @@ dpp::message ServerStatusComponent::getServerStatusWidget(const ServerConfig& co
 
 void ServerStatusComponent::onChannelDelete(const dpp::channel_delete_t& event)
 {
-	std::lock_guard guard(m_mutex);
-	auto client = m_databasePool.acquire();
-
-	const auto guild = event.deleted.guild_id;
-	const auto channel = event.deleted.id;
-	if (!m_configs.contains(guild) || (dpp::snowflake)m_configs[(uint64_t)guild]->m_channelID != channel)
+	const auto guild = (uint64_t)event.deleted.guild_id;
+	const auto channel = (uint64_t)event.deleted.id;
+	
+	ServerConfig* config;
+	if (config = m_configs.find(guild); !config)
 		return;
 
-	m_configs.erase((uint64_t)guild);
-	client->database(Database::Name)[Database::ServerConfig].delete_one(make_document(kvp("guildID", (int64_t)guild)));
+	std::unique_lock lock(config->m_mutex);
+
+	if (config->m_channelID != channel)
+		return;
+
+	{
+		auto client = m_databasePool.acquire();
+		config->removeFromDatabase(*client);
+	}
+
+	m_configs.erase(guild);
 	m_bot.componentLog(std::make_shared<GuildEmbedMessage>("Server status channel was deleted, removing saved server configurations!", guild));
 }
 
 void ServerStatusComponent::onMessageDelete(const dpp::message_delete_t& event)
 {
-	std::lock_guard guard(m_mutex);
-	auto client = m_databasePool.acquire();
+	const auto guild = (uint64_t)event.guild_id;
 
-	const auto guild = event.guild_id;
-	if (! m_configs.contains(guild))
+	ServerConfig* config;
+	if (config = m_configs.find(guild); !config)
 		return;
 
-	const auto& config = *m_configs[guild];
-	if (event.channel_id != config.m_channelID || event.id != config.m_statusWidget.m_messageID || config.m_statusWidget.m_commandID.has_value())
+	std::unique_lock lock(config->m_mutex);
+
+	if (event.channel_id != (int64_t)config->m_channelID || event.id != (int64_t)*config->m_statusWidget.m_messageID || config->m_statusWidget.m_commandID.has_value())
 		return;
 
- 	m_configs.erase((uint64_t)guild);
-	client->database(Database::Name)[Database::ServerConfig].delete_one(make_document(kvp("guildID", (int64_t)guild)));
+	{
+		auto client = m_databasePool.acquire();
+		config->removeFromDatabase(*client);
+	}
+
+	m_configs.erase(guild);
 	m_bot.componentLog(std::make_shared<GuildEmbedMessage>("Server status widget was deleted, removing saved server configurations!", guild));
 }
 
