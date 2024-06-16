@@ -39,6 +39,7 @@ private:
 	std::vector<std::unique_ptr<Component>>						m_components;
 	boost::unordered_flat_map<std::string, SlashFunction>		m_slashCommands;
 	boost::unordered_flat_map<std::string, ButtonFunction>		m_buttonCommands;
+	std::vector<ButtonCommand>									m_buttonPrefixCommands;
 	boost::unordered_flat_map<std::string, SelectFunction>		m_selectCommands;
 	boost::unordered_flat_map<std::string, FormFunction>		m_formCommands;
 	boost::unordered_flat_map<dpp::snowflake, dpp::snowflake>	m_serverStatusChannel;

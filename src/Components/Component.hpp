@@ -6,6 +6,12 @@
 #include <string>
 #include <vector>
 
+enum class MatchType
+{
+	EXACT,
+	PREFIX
+};
+
 typedef std::function<void(const dpp::slashcommand_t&)> SlashFunction;
 struct SlashCommand
 {
@@ -18,6 +24,7 @@ struct ButtonCommand
 {
 	std::string id;
 	ButtonFunction buttonFunction;
+	MatchType type = MatchType::EXACT;
 };
 
 typedef std::function<void(const dpp::select_click_t&)> SelectFunction;

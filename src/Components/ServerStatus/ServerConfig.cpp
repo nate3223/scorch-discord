@@ -31,8 +31,7 @@ ServerConfig::ServerConfig(const bsoncxx::document::view& view)
 		m_channelID = (int64_t)channelID.get_int64().value;
 	if (const auto& servers = view[Database::Servers]; servers)
 	{
-		const auto serverArray = servers.get_array().value;
-		for (const auto& serverID : serverArray)
+		for (const auto& serverID : servers.get_array().value)
 			m_serverIDs.push_back((uint64_t)serverID.get_int64().value);
 	}
 	if (const auto& statusWidget = view[Database::StatusWidget]; statusWidget)

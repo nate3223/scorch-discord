@@ -1,11 +1,12 @@
 #include "ServerStatusComponent.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <dpp/unicode_emoji.h>
 #include <format>
 #include <functional>
+#include <regex>
 #include <thread>
-#include <chrono>
 
 namespace
 {
@@ -67,18 +68,13 @@ ServerStatusComponent::ServerStatusComponent(DiscordBot& bot)
 			)
 			.set_default_permissions(0)
 	);
+	
 	m_buttonCommands.emplace_back(
-		ServerStatusWidget::RestartServer,
-		std::bind_front(&ServerStatusComponent::onServerRestartButton, this)
+		Server::CustomButtonPrefix,
+		std::bind_front(&ServerStatusComponent::onServerCustomButton, this),
+		MatchType::PREFIX
 	);
-	m_buttonCommands.emplace_back(
-		ServerStatusWidget::StartServer,
-		std::bind_front(&ServerStatusComponent::onServerStartButton, this)
-	);
-	m_buttonCommands.emplace_back(
-		ServerStatusWidget::StopServer,
-		std::bind_front(&ServerStatusComponent::onServerStopButton, this)
-	);
+
 	m_buttonCommands.emplace_back(
 		ServerStatusWidget::ServerSettings,
 		std::bind_front(&ServerStatusComponent::onServerSettingsButton, this)
@@ -467,16 +463,44 @@ void ServerStatusComponent::onSelectServer(const dpp::select_click_t& event)
 	event.reply();
 }
 
-void ServerStatusComponent::onServerRestartButton(const dpp::button_click_t& event)
+void ServerStatusComponent::onServerCustomButton(const dpp::button_click_t& event)
 {
-}
+	const auto guild = (uint64_t)event.command.guild_id;
 
-void ServerStatusComponent::onServerStartButton(const dpp::button_click_t& event)
-{
-}
+	ServerConfig* config;
+	if (config = m_configs.find(guild); !config)
+	{
+		event.reply(dpp::message(ServerStatusWidget::NoChannel).set_flags(dpp::m_ephemeral));
+		return;
+	}
 
-void ServerStatusComponent::onServerStopButton(const dpp::button_click_t& event)
-{
+	std::shared_lock lock(config->m_mutex);
+
+	std::smatch matches;
+	if (!std::regex_search(event.custom_id, matches, Server::CustomButtonPattern) || matches.size() != 3)
+	{
+		event.reply(dpp::message("Could not parse button ID!"));
+		return;
+	}
+	
+	const uint64_t serverID = strtoull(matches[1].str().c_str(), nullptr, 10);
+	const std::string buttonName = matches[2].str();
+
+	Server* server;
+	if (server = m_servers.find(serverID); !server)
+	{
+		event.reply(dpp::message("Could not find the (possibly deleted) server corresponding to that button!"));
+		return;
+	}
+
+	// TODO: This can execute different buttons on different servers if the server changes before the buttons are updated
+	//       Need to make a way so that buttons have unique IDs for each server
+	if (!server->onCustomButtonPressed(buttonName))
+	{
+		return;
+	}
+
+	event.reply();
 }
 
 void ServerStatusComponent::onServerSettingsButton(const dpp::button_click_t& event)
@@ -486,7 +510,7 @@ void ServerStatusComponent::onServerSettingsButton(const dpp::button_click_t& ev
 	ServerConfig* config;
 	if (config = m_configs.find(guild); !config)
 	{
-		event.reply(dpp::message(RemoveServer::NoChannel).set_flags(dpp::m_ephemeral));
+		event.reply(dpp::message(ServerStatusWidget::NoChannel).set_flags(dpp::m_ephemeral));
 		return;
 	}
 
@@ -581,6 +605,12 @@ void ServerStatusComponent::onPinnedServerSelect(const dpp::select_click_t& even
 
 void ServerStatusComponent::onSelectQueryServer(const dpp::select_click_t& event)
 {
+	if (event.values.empty())
+	{
+		event.reply();
+		return;
+	}
+
 	const auto guild = (uint64_t)event.command.guild_id;
 
 	ServerConfig* config;
@@ -608,9 +638,7 @@ void ServerStatusComponent::onSelectQueryServer(const dpp::select_click_t& event
 	}
 
 	event.reply(dpp::message()
-		.add_embed(
-			getServerStatusEmbed(*server)
-		)
+		.add_embed(server->getEmbed())
 		.set_flags(dpp::m_ephemeral)
 	);
 }
@@ -681,40 +709,16 @@ dpp::component ServerStatusComponent::getServerSelectMenuComponent(const ServerC
 	return selectMenuComponent;
 }
 
-dpp::embed ServerStatusComponent::getServerStatusEmbed(const Server& server)
-{
-	return dpp::embed()
-		.set_title(server.m_name)
-		.add_field("IP Address", "TestServer.com")
-		.add_field("Player Count", "10")
-		.set_timestamp(time(0));
-}
-
 dpp::message ServerStatusComponent::getServerStatusWidget(const ServerConfig& config)
 {
 	auto message = dpp::message();
 	message.set_channel_id(config.m_channelID);
 
-	dpp::component buttonRow = dpp::component();
 	if (config.m_statusWidget.m_activeServerID.has_value())
 	{
-		message.add_embed(getServerStatusEmbed(*config.m_statusWidget.m_activeServer));
-		buttonRow.add_component(
-			dpp::component()
-				.set_label("Restart")
-				.set_id(ServerStatusWidget::RestartServer)
-				.set_type(dpp::cot_button)
-		).add_component(
-			dpp::component()
-				.set_label("Start")
-				.set_id(ServerStatusWidget::StartServer)
-				.set_type(dpp::cot_button)
-		).add_component(
-			dpp::component()
-				.set_label("Stop")
-				.set_id(ServerStatusWidget::StopServer)
-				.set_type(dpp::cot_button)
-		);
+		message.add_embed(config.m_statusWidget.m_activeServer->getEmbed());
+		for (const auto& buttonRow : config.m_statusWidget.m_activeServer->getButtonRows())
+			message.add_component(buttonRow);
 	}
 	else
 	{
@@ -724,21 +728,26 @@ dpp::message ServerStatusComponent::getServerStatusWidget(const ServerConfig& co
 				.set_timestamp(time(0))
 		);
 	}
-	buttonRow.add_component(
+
+	dpp::component settingsButton =
 		dpp::component()
 			.set_label("Settings")
 			.set_id(ServerStatusWidget::ServerSettings)
-			.set_type(dpp::cot_button)
-	);
-	message.add_component(buttonRow);
+			.set_type(dpp::cot_button);
 
-	if (config.m_serverIDs.size() > 1)
+	if (message.components.empty() || message.components.back().components.size() % Server::ButtonsPerRow == 0)
+		message.add_component(dpp::component().add_component(std::move(settingsButton)));
+	else
+		message.components.back().add_component(std::move(settingsButton));
+
+	if (!config.m_serverIDs.empty())
 	{
 		message.add_component(
 			dpp::component().add_component(
 			getServerSelectMenuComponent(config)
 				.set_placeholder("Select a server to query")
 				.set_id(ServerStatusWidget::QueryServer)
+				.set_min_values(0)
 			)
 		);
 	}

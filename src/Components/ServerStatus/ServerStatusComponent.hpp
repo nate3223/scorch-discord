@@ -33,20 +33,17 @@ public:
 
 	void	onSelectServer(const dpp::select_click_t& event);
 
-	void	onServerRestartButton(const dpp::button_click_t& event);
-	void	onServerStartButton(const dpp::button_click_t& event);
-	void	onServerStopButton(const dpp::button_click_t& event);
+	void	onServerCustomButton(const dpp::button_click_t& event);
 	void	onServerSettingsButton(const dpp::button_click_t& event);
 	void	onPinnedServerSelect(const dpp::select_click_t& event);
 	void	onSelectQueryServer(const dpp::select_click_t& event);
 
 protected:
-	void					updateServerStatusWidget(const ServerConfig& config);
+	void			updateServerStatusWidget(const ServerConfig& config);
 
 	dpp::interaction_modal_response	getAddServerModal();
 	dpp::component	getRemoveServerComponent(const ServerConfig& config);
 	dpp::component	getServerSelectMenuComponent(const ServerConfig& config);
-	dpp::embed		getServerStatusEmbed(const Server& server);
 	dpp::message	getServerStatusWidget(const ServerConfig& config);
 
 	// Component

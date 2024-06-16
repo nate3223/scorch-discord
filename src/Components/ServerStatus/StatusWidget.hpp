@@ -10,8 +10,6 @@ class StatusWidget
 	: public Document<StatusWidget>
 {
 public:
-	static constexpr auto MAX_BUTTONS = 19;
-
 	StatusWidget() = default;
 	StatusWidget(const bsoncxx::document::view& view);
 

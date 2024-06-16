@@ -1,15 +1,25 @@
 #include "Server.hpp"
 
+#include <format>
+
 namespace
 {
+	namespace Button
+	{
+		constexpr auto MaxCustomButtons			= 19;
+	}
 	namespace Database
 	{
 		constexpr char Collection[] = "Servers";
 		constexpr char ID[]			= "id";
 		constexpr char Name[]		= "name";
-		constexpr char Address[]	= "Address";
+		constexpr char Address[]	= "address";
+		constexpr char Buttons[]	= "buttons";
+		constexpr char Endpoint[]	= "endpoint";
 	}
 }
+
+const std::regex Server::CustomButtonPattern = std::regex(std::format("{}{} {}", CustomButtonPrefix, "", ""));
 
 std::vector<std::unique_ptr<Server>> Server::FindAll(const mongocxx::client& client)
 {
@@ -43,6 +53,11 @@ Server::Server(const bsoncxx::document::view& view)
 		m_name = std::string(name.get_string().value);
 	if (const auto& address = view[Database::Address]; address)
 		m_address = std::string(address.get_string().value);
+	if (const auto& buttons = view[Database::Buttons]; buttons)
+	{
+		for (const auto& doc : buttons.get_array().value)
+			m_buttons.emplace_back(doc.get_document());
+	}
 }
 
 bsoncxx::document::value Server::getValue() const
@@ -66,4 +81,52 @@ dpp::embed Server::getEmbed() const
 		.add_field("IP Address", "TestServer.com")
 		.add_field("Player Count", "10")
 		.set_timestamp(time(0));
+}
+
+std::vector<dpp::component> Server::getButtonRows() const
+{
+	std::vector<dpp::component> rows;
+	for (size_t i = 0; i < m_buttons.size(); i += ButtonsPerRow)
+	{
+		dpp::component row;
+		for (size_t j = 0; i + j < m_buttons.size() && j < ButtonsPerRow; j++)
+		{
+			row.add_component(
+				dpp::component()
+					.set_label(m_buttons[i + j].m_name)
+					.set_id(std::format("{}{} {}", CustomButtonPrefix, std::to_string(m_id), m_name))
+					.set_type(dpp::cot_button)
+			);
+		}
+		rows.push_back(std::move(row));
+	}
+	return std::vector<dpp::component>();
+}
+
+bool Server::onCustomButtonPressed(const std::string& buttonName)
+{
+	printf("Button %s pressed\n", buttonName.c_str());
+	return true;
+}
+
+ServerButton::ServerButton(const std::string& name, const std::string& endpoint)
+	: m_name(name)
+	, m_endpoint(endpoint)
+{
+}
+
+ServerButton::ServerButton(const bsoncxx::document::view& view)
+{
+	if (const auto& name = view[Database::Name]; name)
+		m_name = std::string(name.get_string().value);
+	if (const auto& endpoint = view[Database::Endpoint]; endpoint)
+		m_endpoint = std::string(endpoint.get_string().value);
+}
+
+bsoncxx::document::value ServerButton::getValue() const
+{
+	return make_document(
+		kvp(Database::Name, m_name.c_str()),
+		kvp(Database::Endpoint, m_endpoint.c_str())
+	);
 }
