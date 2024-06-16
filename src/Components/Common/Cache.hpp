@@ -1,6 +1,7 @@
 #pragma once
 
 #include <boost/unordered/unordered_flat_map.hpp>
+#include <mutex>
 #include <shared_mutex>
 #include <vector>
 

@@ -8,7 +8,7 @@ std::vector<T> Document<T>::ContructVector(const bsoncxx::array::view& arr, Args
 	for (const auto& element : arr)
 	{
 		if (element.type() == type::k_document)
-			items.emplace_back(element.get_document(), std::forward<Args>(args));
+			items.emplace_back(element.get_document(), std::forward<Args>(args)...);
 	}
 	return items;
 }
@@ -21,7 +21,7 @@ std::vector<std::unique_ptr<T>> Document<T>::ContructUniqueVector(const bsoncxx:
 	for (const auto& element : arr)
 	{
 		if (element.type() == type::k_document)
-			items.push_back(std::make_unique<T>(element.get_document(), std::forward<Args>(args)));
+			items.push_back(std::make_unique<T>(element.get_document(), std::forward<Args>(args)...));
 	}
 	return items;
 }

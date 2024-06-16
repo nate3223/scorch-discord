@@ -126,15 +126,17 @@ ServerStatusComponent::ServerStatusComponent(DiscordBot& bot)
 
 	{
 		auto client = m_databasePool.acquire();
-		for (auto& config : ServerConfig::FindAll(*client))
-		{	
-			const auto guildID = config->m_guildID;
-			m_configs.store(guildID, std::move(config));
-		}
 		for (auto& server : Server::FindAll(*client))
 		{
 			const auto id = server->m_id;
 			m_servers.store(id, std::move(server));
+		}
+		for (auto& config : ServerConfig::FindAll(*client))
+		{	
+			const auto guildID = config->m_guildID;
+			if (config->m_statusWidget.m_activeServerID.has_value())
+				config->m_statusWidget.m_activeServer = m_servers.find(*config->m_statusWidget.m_activeServerID);
+			m_configs.store(guildID, std::move(config));
 		}
 	}
 }
@@ -462,7 +464,7 @@ void ServerStatusComponent::onSelectServer(const dpp::select_click_t& event)
 		msg.set_content("Just kidding! Kitty lives happy and unharmed!");
 		m_bot->message_edit(msg);
 		});
-	event.reply("");
+	event.reply();
 }
 
 void ServerStatusComponent::onServerRestartButton(const dpp::button_click_t& event)
@@ -574,7 +576,7 @@ void ServerStatusComponent::onPinnedServerSelect(const dpp::select_click_t& even
 
 	updateServerStatusWidget(*config);
 
-	event.reply("");
+	event.reply();
 }
 
 void ServerStatusComponent::onSelectQueryServer(const dpp::select_click_t& event)
@@ -730,7 +732,7 @@ dpp::message ServerStatusComponent::getServerStatusWidget(const ServerConfig& co
 	);
 	message.add_component(buttonRow);
 
-	if (config.m_statusWidget.m_activeServerID.has_value() && config.m_serverIDs.size() > 1)
+	if (config.m_serverIDs.size() > 1)
 	{
 		message.add_component(
 			dpp::component().add_component(
