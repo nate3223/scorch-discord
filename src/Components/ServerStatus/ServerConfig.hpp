@@ -2,6 +2,7 @@
 
 #include "Document.hpp"
 #include "Server.hpp"
+#include "StaticCache.hpp"
 #include "StatusWidget.hpp"
 
 #include <memory>
@@ -33,3 +34,5 @@ public:
 
 	std::shared_mutex		m_mutex;
 };
+
+DEFINE_STATIC_CACHE(ServerConfigs, ServerConfig)

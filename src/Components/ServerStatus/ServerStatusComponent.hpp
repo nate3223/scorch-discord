@@ -34,9 +34,15 @@ public:
 	void	onSelectServer(const dpp::select_click_t& event);
 
 	void	onServerCustomButton(const dpp::button_click_t& event);
-	void	onServerSettingsButton(const dpp::button_click_t& event);
-	void	onPinnedServerSelect(const dpp::select_click_t& event);
+	void	onWidgetSettingsButton(const dpp::button_click_t& event);
 	void	onSelectQueryServer(const dpp::select_click_t& event);
+
+	void	onPinnedServerSelect(const dpp::select_click_t& event);
+
+	void	onServerSettingsButton(const dpp::button_click_t& event);
+
+	void	onAddCustomServerButtonButton(const dpp::button_click_t& event);
+	void	onRemoveCustomServerButtonButton(const dpp::button_click_t& event);
 
 protected:
 	void			updateServerStatusWidget(const ServerConfig& config);
@@ -53,6 +59,4 @@ protected:
 
 private:
 	mongocxx::pool&			m_databasePool;
-	Cache<ServerConfig>		m_configs;
-	Cache<Server>			m_servers;
 };

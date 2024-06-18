@@ -44,13 +44,17 @@ namespace
 
 	namespace ServerStatusWidget
 	{
-		constexpr auto RestartServer	= "StatusWidgetRestartServerButton";
-		constexpr auto StartServer		= "StatusWidgetStartServerButton";
-		constexpr auto StopServer		= "StatusWidgetStopServerButton";
-		constexpr auto ServerSettings	= "StatusWidgetServerSettingsButton";
+		constexpr auto WidgetSettings	= "StatusWidgetSettingsButton";
 		constexpr auto QueryServer		= "StatusWidgetQueryServerOption";
 		constexpr auto PinnedServer		= "StatusWidgetSettingPinnedServerOption";
 		constexpr auto NoChannel		= "No status channel is set for this guild. You shouldn't be able to press this.";
+	}
+
+	namespace ServerSettings
+	{
+		constexpr auto Button				= "ServerSettingsButton";
+		constexpr auto AddCustomButton		= "ServerSettingsAddCustomButton";
+		constexpr auto RemoveCustomButton	= "ServerSettingsRemoveCustomButton";
 	}
 }
 
@@ -69,15 +73,15 @@ ServerStatusComponent::ServerStatusComponent(DiscordBot& bot)
 			.set_default_permissions(0)
 	);
 	
+	// Status widget items
 	m_buttonCommands.emplace_back(
-		Server::CustomButtonPrefix,
+		Server::Buttons::CustomButtonPrefix,
 		std::bind_front(&ServerStatusComponent::onServerCustomButton, this),
 		MatchType::PREFIX
 	);
-
 	m_buttonCommands.emplace_back(
-		ServerStatusWidget::ServerSettings,
-		std::bind_front(&ServerStatusComponent::onServerSettingsButton, this)
+		ServerStatusWidget::WidgetSettings,
+		std::bind_front(&ServerStatusComponent::onWidgetSettingsButton, this)
 	);
 	m_selectCommands.emplace_back(
 		ServerStatusWidget::PinnedServer,
@@ -87,6 +91,27 @@ ServerStatusComponent::ServerStatusComponent(DiscordBot& bot)
 		ServerStatusWidget::QueryServer,
 		std::bind_front(&ServerStatusComponent::onSelectQueryServer, this)
 	);
+
+	// Server query items
+	m_buttonCommands.emplace_back(
+		Server::Buttons::ServerSettingsPrefix,
+		std::bind_front(&ServerStatusComponent::onServerSettingsButton, this),
+		MatchType::PREFIX
+	);
+
+	// Server settings items
+	m_buttonCommands.emplace_back(
+		Server::Buttons::AddCustomButtonPrefix,
+		std::bind_front(&ServerStatusComponent::onAddCustomServerButtonButton, this),
+		MatchType::PREFIX
+	);
+	m_buttonCommands.emplace_back(
+		Server::Buttons::RemoveCustomButtonPrefix,
+		std::bind_front(&ServerStatusComponent::onRemoveCustomServerButtonButton, this),
+		MatchType::PREFIX
+	);
+
+	// Widget settings items
 	m_buttonCommands.emplace_back(
 		AddServer::Button,
 		std::bind_front(&ServerStatusComponent::onAddServerButton, this)
@@ -95,8 +120,6 @@ ServerStatusComponent::ServerStatusComponent(DiscordBot& bot)
 		RemoveServer::Button,
 		std::bind_front(&ServerStatusComponent::onRemoveServerButton, this)
 	);
-
-	// Adding server
 	m_slashCommands.emplace_back(
 		std::bind_front(&ServerStatusComponent::onAddServerCommand, this),
 		dpp::slashcommand(AddServer::Command, "Adds a server to be tracked.", m_bot->me.id)
@@ -106,8 +129,6 @@ ServerStatusComponent::ServerStatusComponent(DiscordBot& bot)
 		AddServer::Form,
 		std::bind_front(&ServerStatusComponent::onAddServerForm, this)
 	);
-
-	// Removing server
 	m_slashCommands.emplace_back(
 		std::bind_front(&ServerStatusComponent::onRemoveServerCommand, this),
 		dpp::slashcommand(RemoveServer::Command, "Removes tracked servers", m_bot->me.id)
@@ -125,14 +146,14 @@ ServerStatusComponent::ServerStatusComponent(DiscordBot& bot)
 		for (auto& server : Server::FindAll(*client))
 		{
 			const auto id = server->m_id;
-			m_servers.store(id, std::move(server));
+			Servers::store(id, std::move(server));
 		}
 		for (auto& config : ServerConfig::FindAll(*client))
 		{	
 			const auto guildID = config->m_guildID;
 			if (config->m_statusWidget.m_activeServerID.has_value())
-				config->m_statusWidget.m_activeServer = m_servers.find(*config->m_statusWidget.m_activeServerID);
-			m_configs.store(guildID, std::move(config));
+				config->m_statusWidget.m_activeServer = Servers::find(*config->m_statusWidget.m_activeServerID);
+			ServerConfigs::store(guildID, std::move(config));
 		}
 	}
 }
@@ -152,7 +173,7 @@ void ServerStatusComponent::onSetStatusChannel(const dpp::slashcommand_t& event)
 
 		ServerConfig* config;
 		std::unique_ptr<std::unique_lock<std::shared_mutex>> lock;
-		if (config = m_configs.find(guild); !config)
+		if (config = ServerConfigs::find(guild); !config)
 		{
 			config = new ServerConfig();
 			lock = std::make_unique<std::unique_lock<std::shared_mutex>>(config->m_mutex);
@@ -165,7 +186,7 @@ void ServerStatusComponent::onSetStatusChannel(const dpp::slashcommand_t& event)
 				config->insertIntoDatabase(*client);
 			}
 
-			m_configs.store(guild, std::unique_ptr<ServerConfig>(config));
+			ServerConfigs::store(guild, std::unique_ptr<ServerConfig>(config));
 		}
 		else
 		{
@@ -193,7 +214,7 @@ void ServerStatusComponent::onSetStatusChannel(const dpp::slashcommand_t& event)
 			dpp::message msg = callback.get<dpp::message>();
 
 			ServerConfig* config;
-			if (config = m_configs.find(guild); !config)
+			if (config = ServerConfigs::find(guild); !config)
 			{
 				m_bot->message_delete(msg.id, msg.channel_id);
 				//abort
@@ -229,7 +250,7 @@ void ServerStatusComponent::onSetStatusChannel(const dpp::slashcommand_t& event)
 void ServerStatusComponent::onAddServerCommand(const dpp::slashcommand_t& event)
 {
 	const auto guild = (uint64_t)event.command.guild_id;
-	if (!m_configs.contains(guild))
+	if (!ServerConfigs::contains(guild))
 	{
 		event.reply(dpp::message(AddServer::NoChannel).set_flags(dpp::m_ephemeral));
 		return;
@@ -242,7 +263,7 @@ void ServerStatusComponent::onAddServerButton(const dpp::button_click_t& event)
 {
 	const auto guild = (uint64_t)event.command.guild_id;
 
-	if (!m_configs.contains(guild))
+	if (!ServerConfigs::contains(guild))
 	{
 		event.reply(dpp::message(RemoveServer::NoChannel).set_flags(dpp::m_ephemeral));
 		return;
@@ -263,7 +284,7 @@ void ServerStatusComponent::onAddServerForm(const dpp::form_submit_t& event)
 	const auto guild = (uint64_t)event.command.guild_id;
 
 	ServerConfig* config;
-	if (config = m_configs.find(guild), !config)
+	if (config = ServerConfigs::find(guild), !config)
 	{
 		event.reply(dpp::message(AddServer::NoChannel).set_flags(dpp::m_ephemeral));
 		return;
@@ -288,8 +309,8 @@ void ServerStatusComponent::onAddServerForm(const dpp::form_submit_t& event)
 	const std::string& serverName = std::get<std::string>(event.components[0].components[0].value);
 	const std::string& address = std::get<std::string>(event.components[1].components[0].value);
 
-	Server* server = new Server(id, serverName, address);
-	m_servers.store(id, std::unique_ptr<Server>(server));
+	Server* server = new Server(id, serverName, address, guild);
+	Servers::store(id, std::unique_ptr<Server>(server));
 
 	config->m_serverIDs.push_back(id);
 
@@ -314,7 +335,7 @@ void ServerStatusComponent::onRemoveServerCommand(const dpp::slashcommand_t& eve
 	const auto guild = (uint64_t)event.command.guild_id;
 
 	ServerConfig* config;
-	if (config = m_configs.find(guild); !config)
+	if (config = ServerConfigs::find(guild); !config)
 	{
 		event.reply(dpp::message(RemoveServer::NoChannel).set_flags(dpp::m_ephemeral));
 		return;
@@ -339,7 +360,7 @@ void ServerStatusComponent::onRemoveServerButton(const dpp::button_click_t& even
 	const auto guild = (uint64_t)event.command.guild_id;
 
 	ServerConfig* config;
-	if (config = m_configs.find(guild); !config)
+	if (config = ServerConfigs::find(guild); !config)
 	{
 		event.reply(dpp::message(RemoveServer::NoChannel).set_flags(dpp::m_ephemeral));
 		return;
@@ -375,7 +396,7 @@ void ServerStatusComponent::onRemoveServerSelect(const dpp::select_click_t& even
 	
 	{
 		ServerConfig* config;
-		if (config = m_configs.find(guild); !config)
+		if (config = ServerConfigs::find(guild); !config)
 		{
 			event.reply(dpp::message(RemoveServer::NoChannel).set_flags(dpp::m_ephemeral));
 			return;
@@ -400,7 +421,7 @@ void ServerStatusComponent::onRemoveServerSelect(const dpp::select_click_t& even
 					
 				serversToDelete.erase(it);
 				deletedIDs.push_back(serverID);
-				deletedServers += std::format("  - {}\n", m_servers.find(serverID)->m_name);
+				deletedServers += std::format("  - {}\n", Servers::find(serverID)->m_name);
 				return false;
 			}
 		
@@ -419,7 +440,7 @@ void ServerStatusComponent::onRemoveServerSelect(const dpp::select_click_t& even
 				config->updateStatusWidget(*client);
 			}
 			Server::BulkRemoveFromDatabase(deletedIDs, *client);
-			m_servers.bulkRemove(deletedIDs);
+			Servers::bulkRemove(deletedIDs);
 		}
 		
 		updateServerStatusWidget(*config);
@@ -468,7 +489,7 @@ void ServerStatusComponent::onServerCustomButton(const dpp::button_click_t& even
 	const auto guild = (uint64_t)event.command.guild_id;
 
 	ServerConfig* config;
-	if (config = m_configs.find(guild); !config)
+	if (config = ServerConfigs::find(guild); !config)
 	{
 		event.reply(dpp::message(ServerStatusWidget::NoChannel).set_flags(dpp::m_ephemeral));
 		return;
@@ -477,25 +498,21 @@ void ServerStatusComponent::onServerCustomButton(const dpp::button_click_t& even
 	std::shared_lock lock(config->m_mutex);
 
 	std::smatch matches;
-	if (!std::regex_search(event.custom_id, matches, Server::CustomButtonPattern) || matches.size() != 3)
+	const auto serverID = Server::ParseServerIDFromComponentID(event.custom_id, Server::Buttons::CustomButtonPattern, matches); 
+	if (!serverID.has_value())
 	{
-		event.reply(dpp::message("Could not parse button ID!"));
+		event.reply(dpp::message("Could not parse the server ID from the button!").set_flags(dpp::m_ephemeral));
 		return;
 	}
-	
-	const uint64_t serverID = strtoull(matches[1].str().c_str(), nullptr, 10);
-	const std::string buttonName = matches[2].str();
 
 	Server* server;
-	if (server = m_servers.find(serverID); !server)
+	if (server = Servers::find(*serverID); !server)
 	{
 		event.reply(dpp::message("Could not find the (possibly deleted) server corresponding to that button!"));
 		return;
 	}
 
-	// TODO: This can execute different buttons on different servers if the server changes before the buttons are updated
-	//       Need to make a way so that buttons have unique IDs for each server
-	if (!server->onCustomButtonPressed(buttonName))
+	if (!server->onCustomButtonPressed(matches))
 	{
 		return;
 	}
@@ -503,12 +520,12 @@ void ServerStatusComponent::onServerCustomButton(const dpp::button_click_t& even
 	event.reply();
 }
 
-void ServerStatusComponent::onServerSettingsButton(const dpp::button_click_t& event)
+void ServerStatusComponent::onWidgetSettingsButton(const dpp::button_click_t& event)
 {
 	const auto guild = (uint64_t)event.command.guild_id;
 
 	ServerConfig* config;
-	if (config = m_configs.find(guild); !config)
+	if (config = ServerConfigs::find(guild); !config)
 	{
 		event.reply(dpp::message(ServerStatusWidget::NoChannel).set_flags(dpp::m_ephemeral));
 		return;
@@ -555,7 +572,7 @@ void ServerStatusComponent::onPinnedServerSelect(const dpp::select_click_t& even
 	const auto guild = (uint64_t)event.command.guild_id;
 
 	ServerConfig* config;
-	if (config = m_configs.find(guild); !config)
+	if (config = ServerConfigs::find(guild); !config)
 	{
 		event.reply(dpp::message("You must set a status channel before selecting a pinned server!").set_flags(dpp::m_ephemeral));
 		return;
@@ -576,7 +593,17 @@ void ServerStatusComponent::onPinnedServerSelect(const dpp::select_click_t& even
 		return;
 	}
 
-	const uint64_t serverID = std::stoull(event.values[0]);
+	uint64_t serverID;
+	try
+	{
+		serverID = std::stoull(event.values[0]);
+	}
+	catch (const std::exception& e)
+	{
+		event.reply(dpp::message("Failed to parse server ID!").set_flags(dpp::m_ephemeral));
+		return;
+	}
+
 	if (config->m_statusWidget.m_activeServerID.has_value() && serverID == *config->m_statusWidget.m_activeServerID)
 	{
 		event.reply(dpp::message("Server is already pinned!").set_flags(dpp::m_ephemeral));
@@ -584,7 +611,7 @@ void ServerStatusComponent::onPinnedServerSelect(const dpp::select_click_t& even
 	}
 
 	Server* server;
-	if (server = m_servers.find(serverID); !server)
+	if (server = Servers::find(serverID); !server)
 	{
 		event.reply(dpp::message("Could not find selected server, it was probably deleted!").set_flags(dpp::m_ephemeral));
 		return;
@@ -614,7 +641,7 @@ void ServerStatusComponent::onSelectQueryServer(const dpp::select_click_t& event
 	const auto guild = (uint64_t)event.command.guild_id;
 
 	ServerConfig* config;
-	if (config = m_configs.find(guild); !config)
+	if (config = ServerConfigs::find(guild); !config)
 	{
 		event.reply(dpp::message("You must set a status channel before querying a server!").set_flags(dpp::m_ephemeral));
 		return;
@@ -622,25 +649,52 @@ void ServerStatusComponent::onSelectQueryServer(const dpp::select_click_t& event
 
 	std::shared_lock lock(config->m_mutex);
 
-	dpp::channel* channel = dpp::find_channel(event.command.channel_id);
-	if (channel == nullptr || !channel->get_user_permissions(&event.command.usr).can(dpp::p_administrator))
+	uint64_t serverID;
+	try
 	{
-		event.reply(dpp::message("You do not have permission to change the pinned server!").set_flags(dpp::m_ephemeral));
+		serverID = std::stoull(event.values[0]);
+	}
+	catch (const std::exception& e)
+	{
+		event.reply(dpp::message("Failed to parse server ID!").set_flags(dpp::m_ephemeral));
 		return;
 	}
 
-	const uint64_t serverID = std::stoull(event.values[0]);
 	Server* server;
-	if (server = m_servers.find(serverID); !server)
+	if (server = Servers::find(serverID); !server)
 	{
 		event.reply(dpp::message("Could not find selected server, it was probably deleted!").set_flags(dpp::m_ephemeral));
 		return;
 	}
 
+	dpp::message message = dpp::message();
+	message.add_embed(server->getEmbed());
+	for (const auto& buttonRow : server->getButtonRows())
+		message.add_component(buttonRow);
+
+	dpp::component settingsButton = server->getSettingsButton();
+
+	if (message.components.empty() || message.components.back().components.size() % Server::ButtonsPerRow == 0)
+		message.add_component(dpp::component().add_component(std::move(settingsButton)));
+	else
+		message.components.back().add_component(std::move(settingsButton));
+
 	event.reply(dpp::message()
 		.add_embed(server->getEmbed())
 		.set_flags(dpp::m_ephemeral)
 	);
+}
+
+void ServerStatusComponent::onServerSettingsButton(const dpp::button_click_t& event)
+{
+}
+
+void ServerStatusComponent::onAddCustomServerButtonButton(const dpp::button_click_t& event)
+{
+}
+
+void ServerStatusComponent::onRemoveCustomServerButtonButton(const dpp::button_click_t& event)
+{
 }
 
 void ServerStatusComponent::updateServerStatusWidget(const ServerConfig& config)
@@ -701,7 +755,7 @@ dpp::component ServerStatusComponent::getServerSelectMenuComponent(const ServerC
 	for (const auto& serverID : config.m_serverIDs)
 	{
 		const Server* server;
-		if (server = m_servers.find(serverID); !server)
+		if (server = Servers::find(serverID); !server)
 			continue;
 		selectMenuComponent.add_select_option(dpp::select_option(server->m_name, std::to_string(server->m_id)));
 	}
@@ -731,8 +785,8 @@ dpp::message ServerStatusComponent::getServerStatusWidget(const ServerConfig& co
 
 	dpp::component settingsButton =
 		dpp::component()
-			.set_label("Settings")
-			.set_id(ServerStatusWidget::ServerSettings)
+			.set_label("Widget Settings")
+			.set_id(ServerStatusWidget::WidgetSettings)
 			.set_type(dpp::cot_button);
 
 	if (message.components.empty() || message.components.back().components.size() % Server::ButtonsPerRow == 0)
@@ -761,7 +815,7 @@ void ServerStatusComponent::onChannelDelete(const dpp::channel_delete_t& event)
 	const auto channel = (uint64_t)event.deleted.id;
 	
 	ServerConfig* config;
-	if (config = m_configs.find(guild); !config)
+	if (config = ServerConfigs::find(guild); !config)
 		return;
 
 	std::unique_lock lock(config->m_mutex);
@@ -774,7 +828,7 @@ void ServerStatusComponent::onChannelDelete(const dpp::channel_delete_t& event)
 		config->removeFromDatabase(*client);
 	}
 
-	m_configs.erase(guild);
+	ServerConfigs::erase(guild);
 	m_bot.componentLog(std::make_shared<GuildEmbedMessage>("Server status channel was deleted, removing saved server configurations!", guild));
 }
 
@@ -783,7 +837,7 @@ void ServerStatusComponent::onMessageDelete(const dpp::message_delete_t& event)
 	const auto guild = (uint64_t)event.guild_id;
 
 	ServerConfig* config;
-	if (config = m_configs.find(guild); !config)
+	if (config = ServerConfigs::find(guild); !config)
 		return;
 
 	std::unique_lock lock(config->m_mutex);
@@ -796,7 +850,7 @@ void ServerStatusComponent::onMessageDelete(const dpp::message_delete_t& event)
 		config->removeFromDatabase(*client);
 	}
 
-	m_configs.erase(guild);
+	ServerConfigs::erase(guild);
 	m_bot.componentLog(std::make_shared<GuildEmbedMessage>("Server status widget was deleted, removing saved server configurations!", guild));
 }
 

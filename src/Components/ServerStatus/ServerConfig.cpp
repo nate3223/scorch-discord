@@ -14,6 +14,8 @@ namespace
 	}
 }
 
+Cache<ServerConfig> ServerConfigs::g_cache;
+
 std::vector<std::unique_ptr<ServerConfig>> ServerConfig::FindAll(const mongocxx::client& client)
 {
 	std::vector<std::unique_ptr<ServerConfig>> serverConfigs;

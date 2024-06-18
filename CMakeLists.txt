@@ -39,6 +39,7 @@ add_executable(${PROJECT_NAME}
 	src/Components/Log/LogConfig.cpp
 
 	src/Components/ServerStatus/Server.cpp
+	src/Components/ServerStatus/ServerButton.cpp
 	src/Components/ServerStatus/ServerConfig.cpp
 	src/Components/ServerStatus/ServerStatusComponent.cpp
 	src/Components/ServerStatus/StatusWidget.cpp
@@ -48,7 +49,7 @@ add_executable(${PROJECT_NAME}
 	src/Database/DatabaseManager.cpp
 	src/Database/MongoDB/Document.cpp
 	src/Database/MongoDB/MongoDBManager.cpp
-)
+ )
 
 set_target_properties(${PROJECT_NAME} PROPERTIES
     CXX_STANDARD 20
