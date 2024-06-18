@@ -3,11 +3,7 @@
 #include <format>
 
 namespace
-{
-	namespace Button
-	{
-		constexpr auto MaxCustomButtons			= 19;
-	}
+{		
 	namespace Database
 	{
 		constexpr char Collection[] = "Servers";
@@ -21,19 +17,22 @@ namespace
 
 	std::regex formatRegexPattern(const std::string& prefix)
 	{
-		return std::regex(std::format("^{}\\|([0-9]+)(?:\\|([0-9]+))?$", prefix, "", ""));
+		return std::regex(std::format("^{}\\|([0-9]+)(?:\\|([0-9]+))?$", prefix));
 	}
 }
 
 Cache<Server> Servers::g_cache;
 
-const std::regex Server::Buttons::CustomButtonPattern		= formatRegexPattern(Server::Buttons::CustomButtonPrefix);
-const std::regex Server::Buttons::ServerSettingsPattern		= formatRegexPattern(Server::Buttons::ServerSettingsPrefix);
-const std::regex Server::Buttons::AddCustomButtonPattern	= formatRegexPattern(Server::Buttons::AddCustomButtonPrefix);
-const std::regex Server::Buttons::RemoveCustomButtonPattern	= formatRegexPattern(Server::Buttons::RemoveCustomButtonPrefix);
+const std::regex Server::CustomButton::ButtonPattern		= formatRegexPattern(Server::CustomButton::ButtonPrefix);
+const std::regex Server::Settings::ButtonPattern			= formatRegexPattern(Server::Settings::ButtonPrefix);
+const std::regex Server::AddCustomButton::ButtonPattern		= formatRegexPattern(Server::AddCustomButton::ButtonPrefix);
+const std::regex Server::RemoveCustomButton::ButtonPattern	= formatRegexPattern(Server::RemoveCustomButton::ButtonPrefix);
+const std::regex Server::AddCustomButton::FormPattern		= formatRegexPattern(Server::AddCustomButton::FormPrefix);
+const std::regex Server::RemoveCustomButton::OptionPattern	= formatRegexPattern(Server::RemoveCustomButton::OptionPrefix);
 
 const std::optional<uint64_t> Server::ParseServerIDFromComponentID(const std::string& componentID, const std::regex& pattern, std::smatch& matches)
 {
+	// TODO: Use boost-regex
 	if (!std::regex_search(componentID, matches, pattern) || matches.size() != 3)
 		return {};
 
@@ -104,6 +103,15 @@ void Server::insertIntoDatabase(const mongocxx::client& client)
 	client.database(MongoDB::DATABASE_NAME)[Database::Collection].insert_one(getValue());
 }
 
+void Server::updateCustomButtons(const mongocxx::client& client)
+{
+	array arr = ServerButton::ConstructArray(m_buttons);
+	client.database(MongoDB::DATABASE_NAME)[Database::Collection].update_one(
+		make_document(kvp(Database::ID, (int64_t)m_id)),
+		make_document(kvp("$set", make_document(kvp(Database::Buttons, arr))))
+	);
+}
+
 dpp::embed Server::getEmbed() const
 {
 	return dpp::embed()
@@ -116,10 +124,10 @@ dpp::embed Server::getEmbed() const
 std::vector<dpp::component> Server::getButtonRows() const
 {
 	std::vector<dpp::component> rows;
-	for (size_t i = 0; i < m_buttons.size(); i += ButtonsPerRow)
+	for (size_t i = 0; i < m_buttons.size(); i += CustomButton::ButtonsPerRow)
 	{
 		dpp::component row;
-		for (size_t j = 0; i + j < m_buttons.size() && j < ButtonsPerRow; j++)
+		for (size_t j = 0; i + j < m_buttons.size() && j < CustomButton::ButtonsPerRow; j++)
 		{
 			row.add_component(
 				dpp::component()
@@ -130,14 +138,14 @@ std::vector<dpp::component> Server::getButtonRows() const
 		}
 		rows.push_back(std::move(row));
 	}
-	return std::vector<dpp::component>();
+	return rows;
 }
 
 dpp::component Server::getSettingsButton() const
 {
 	return dpp::component()
 		.set_label("Server settings")
-		.set_id(formatServerSettingsButtonID())
+		.set_id(formatComponentID(Settings::ButtonPrefix))
 		.set_type(dpp::cot_button);
 }
 
@@ -149,16 +157,53 @@ std::vector<dpp::component> Server::getServerSettingsRows() const
 			.add_component(
 				dpp::component()
 					.set_label("Add button")
-					.set_id(std::format("{}|{}", Buttons::AddCustomButtonPrefix, m_id))
+					.set_id(std::format("{}|{}", AddCustomButton::ButtonPrefix, m_id))
 					.set_type(dpp::cot_button)
 			).add_component(
 				dpp::component()
 					.set_label("Remove button")
-					.set_id(std::format("{}|{}", Buttons::RemoveCustomButtonPrefix, m_id))
+					.set_id(std::format("{}|{}", RemoveCustomButton::ButtonPrefix, m_id))
 					.set_type(dpp::cot_button)
 			)
 	);
 	return rows;
+}
+
+dpp::interaction_modal_response Server::getAddCustomButtonModal() const
+{
+	dpp::interaction_modal_response modal(formatComponentID(AddCustomButton::FormPrefix), "Add a button");
+	modal.add_component(
+		dpp::component()
+		.set_label("Label")
+		.set_id(AddCustomButton::Name)
+		.set_type(dpp::cot_text)
+		.set_text_style(dpp::text_short)
+		.set_required(true)
+		.set_max_length(80)
+	);
+
+	modal.add_row();
+	modal.add_component(
+		dpp::component()
+		.set_label("Endpoint")
+		.set_id(AddCustomButton::Endpoint)
+		.set_type(dpp::cot_text)
+		.set_text_style(dpp::text_short)
+		.set_required(true)
+	);
+
+	return modal;
+}
+
+dpp::component Server::getRemoveCustomButtonComponent() const
+{
+	return dpp::component()
+		.add_component(getServerButtonsSelectMenuComponent()
+			.set_id(formatComponentID(RemoveCustomButton::OptionPrefix))
+			.set_min_values(1)
+			.set_max_values(m_buttons.size())
+			.set_placeholder("Select buttons to remove")
+		);
 }
 
 bool Server::onCustomButtonPressed(const std::smatch& matches)
@@ -173,12 +218,20 @@ bool Server::onCustomButtonPressed(const std::smatch& matches)
 		return false;
 	}
 
-	if (auto it = std::find(m_buttons.begin(), m_buttons.end(), [buttonID](const ServerButton& button) { return button.m_id == buttonID; }); it != m_buttons.end())
+	if (auto it = std::find_if(m_buttons.begin(), m_buttons.end(), [buttonID](const ServerButton& button) { return button.m_id == buttonID; }); it != m_buttons.end())
 		return it->press();
 	return false;
 }
 
-std::string Server::formatServerSettingsButtonID() const
+std::string Server::formatComponentID(const char* prefix) const
 {
-	return std::format("{}|{}", Buttons::ServerSettingsPrefix, std::to_string(m_id));
+	return std::format("{}|{}", prefix, m_id);
+}
+
+dpp::component Server::getServerButtonsSelectMenuComponent() const
+{
+	dpp::component component = dpp::component().set_type(dpp::cot_selectmenu);
+	for (const auto& button : m_buttons)
+		component.add_select_option(dpp::select_option(button.m_name, std::to_string(button.m_id)));
+	return component;
 }

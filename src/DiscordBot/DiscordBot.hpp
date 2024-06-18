@@ -41,6 +41,8 @@ private:
 	boost::unordered_flat_map<std::string, ButtonFunction>		m_buttonCommands;
 	std::vector<ButtonCommand>									m_buttonPrefixCommands;
 	boost::unordered_flat_map<std::string, SelectFunction>		m_selectCommands;
+	std::vector<SelectCommand>									m_selectPrefixCommands;
 	boost::unordered_flat_map<std::string, FormFunction>		m_formCommands;
+	std::vector<FormCommand>									m_formPrefixCommands;
 	boost::unordered_flat_map<dpp::snowflake, dpp::snowflake>	m_serverStatusChannel;
 };

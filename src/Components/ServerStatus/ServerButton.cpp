@@ -10,7 +10,6 @@ namespace
 	{
 		constexpr char ID[]			= "id";
 		constexpr char Name[]		= "name";
-		constexpr char Address[]	= "address";
 		constexpr char Endpoint[]	= "endpoint";
 	}
 }
@@ -45,7 +44,7 @@ bsoncxx::document::value ServerButton::getValue() const
 
 std::string ServerButton::formatComponentID(const uint64_t serverID)
 {
-	return std::format("{}|{}|{}", Server::Buttons::CustomButtonPrefix, std::to_string(m_id), std::to_string(serverID));
+	return std::format("{}|{}|{}", Server::CustomButton::ButtonPrefix, std::to_string(serverID), std::to_string(m_id));
 }
 
 bool ServerButton::press()

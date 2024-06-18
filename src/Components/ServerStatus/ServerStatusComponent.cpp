@@ -56,6 +56,9 @@ namespace
 		constexpr auto AddCustomButton		= "ServerSettingsAddCustomButton";
 		constexpr auto RemoveCustomButton	= "ServerSettingsRemoveCustomButton";
 	}
+
+	constexpr auto kButtonServerParseError	= "Could not parse the server ID from the button!";
+	constexpr auto kButtonMissingServer		= "Could not find the (possibly deleted) server corresponding to that button!";
 }
 
 ServerStatusComponent::ServerStatusComponent(DiscordBot& bot)
@@ -75,7 +78,7 @@ ServerStatusComponent::ServerStatusComponent(DiscordBot& bot)
 	
 	// Status widget items
 	m_buttonCommands.emplace_back(
-		Server::Buttons::CustomButtonPrefix,
+		Server::CustomButton::ButtonPrefix,
 		std::bind_front(&ServerStatusComponent::onServerCustomButton, this),
 		MatchType::PREFIX
 	);
@@ -94,20 +97,30 @@ ServerStatusComponent::ServerStatusComponent(DiscordBot& bot)
 
 	// Server query items
 	m_buttonCommands.emplace_back(
-		Server::Buttons::ServerSettingsPrefix,
+		Server::Settings::ButtonPrefix,
 		std::bind_front(&ServerStatusComponent::onServerSettingsButton, this),
 		MatchType::PREFIX
 	);
 
 	// Server settings items
 	m_buttonCommands.emplace_back(
-		Server::Buttons::AddCustomButtonPrefix,
+		Server::AddCustomButton::ButtonPrefix,
 		std::bind_front(&ServerStatusComponent::onAddCustomServerButtonButton, this),
 		MatchType::PREFIX
 	);
+	m_formCommands.emplace_back(
+		Server::AddCustomButton::FormPrefix,
+		std::bind_front(&ServerStatusComponent::onAddCustomServerButtonForm, this),
+		MatchType::PREFIX
+	);
 	m_buttonCommands.emplace_back(
-		Server::Buttons::RemoveCustomButtonPrefix,
+		Server::RemoveCustomButton::ButtonPrefix,
 		std::bind_front(&ServerStatusComponent::onRemoveCustomServerButtonButton, this),
+		MatchType::PREFIX
+	);
+	m_selectCommands.emplace_back(
+		Server::RemoveCustomButton::OptionPrefix,
+		std::bind_front(&ServerStatusComponent::onRemoveCustomServerButtonSelect, this),
 		MatchType::PREFIX
 	);
 
@@ -498,17 +511,17 @@ void ServerStatusComponent::onServerCustomButton(const dpp::button_click_t& even
 	std::shared_lock lock(config->m_mutex);
 
 	std::smatch matches;
-	const auto serverID = Server::ParseServerIDFromComponentID(event.custom_id, Server::Buttons::CustomButtonPattern, matches); 
+	const auto serverID = Server::ParseServerIDFromComponentID(event.custom_id, Server::CustomButton::ButtonPattern, matches);
 	if (!serverID.has_value())
 	{
-		event.reply(dpp::message("Could not parse the server ID from the button!").set_flags(dpp::m_ephemeral));
+		event.reply(dpp::message(kButtonServerParseError).set_flags(dpp::m_ephemeral));
 		return;
 	}
 
 	Server* server;
 	if (server = Servers::find(*serverID); !server)
 	{
-		event.reply(dpp::message("Could not find the (possibly deleted) server corresponding to that button!"));
+		event.reply(dpp::message(kButtonMissingServer).set_flags(dpp::m_ephemeral));
 		return;
 	}
 
@@ -674,27 +687,209 @@ void ServerStatusComponent::onSelectQueryServer(const dpp::select_click_t& event
 
 	dpp::component settingsButton = server->getSettingsButton();
 
-	if (message.components.empty() || message.components.back().components.size() % Server::ButtonsPerRow == 0)
+	if (message.components.empty() || message.components.back().components.size() % Server::CustomButton::ButtonsPerRow == 0)
 		message.add_component(dpp::component().add_component(std::move(settingsButton)));
 	else
 		message.components.back().add_component(std::move(settingsButton));
 
-	event.reply(dpp::message()
-		.add_embed(server->getEmbed())
-		.set_flags(dpp::m_ephemeral)
-	);
+	event.reply(message.set_flags(dpp::m_ephemeral));
 }
 
 void ServerStatusComponent::onServerSettingsButton(const dpp::button_click_t& event)
 {
+	const auto guild = (uint64_t)event.command.guild_id;
+
+	ServerConfig* config;
+	if (config = ServerConfigs::find(guild); !config)
+	{
+		event.reply(dpp::message("You must set a status channel before changing a server's settings!").set_flags(dpp::m_ephemeral));
+		return;
+	}
+
+	std::shared_lock lock(config->m_mutex);
+
+	std::smatch matches;
+	const auto serverID = Server::ParseServerIDFromComponentID(event.custom_id, Server::Settings::ButtonPattern, matches);
+	if (!serverID.has_value())
+	{
+		event.reply(dpp::message(kButtonServerParseError).set_flags(dpp::m_ephemeral));
+		return;
+	}
+
+	Server* server;
+	if (server = Servers::find(*serverID); !server)
+	{
+		event.reply(dpp::message(kButtonMissingServer));
+		return;
+	}
+
+	dpp::message message = dpp::message();
+	for (const auto& buttonRow : server->getServerSettingsRows())
+		message.add_component(buttonRow);
+	event.reply(message.set_flags(dpp::m_ephemeral));
 }
 
 void ServerStatusComponent::onAddCustomServerButtonButton(const dpp::button_click_t& event)
 {
+	const auto guild = (uint64_t)event.command.guild_id;
+
+	ServerConfig* config;
+	if (config = ServerConfigs::find(guild); !config)
+	{
+		event.reply(dpp::message("You must set a status channel before adding a custom server button!").set_flags(dpp::m_ephemeral));
+		return;
+	}
+
+	std::shared_lock lock(config->m_mutex);
+
+	std::smatch matches;
+	const auto serverID = Server::ParseServerIDFromComponentID(event.custom_id, Server::AddCustomButton::ButtonPattern, matches);
+	if (!serverID.has_value())
+	{
+		event.reply(dpp::message(kButtonServerParseError).set_flags(dpp::m_ephemeral));
+		return;
+	}
+
+	Server* server;
+	if (server = Servers::find(*serverID); !server)
+	{
+		event.reply(dpp::message(kButtonMissingServer).set_flags(dpp::m_ephemeral));
+		return;
+	}
+
+	if (server->m_buttons.size() >= Server::CustomButton::MaxButtons)
+	{
+		event.reply(dpp::message(std::format("Exceeded the number of maximum custom buttons ({})!", Server::CustomButton::MaxButtons)).set_flags(dpp::m_ephemeral));
+		return;
+	}
+
+	event.dialog(server->getAddCustomButtonModal());
+}
+
+void ServerStatusComponent::onAddCustomServerButtonForm(const dpp::form_submit_t& event)
+{
+	const auto guild = (uint64_t)event.command.guild_id;
+
+	ServerConfig* config;
+	if (config = ServerConfigs::find(guild); !config)
+	{
+		event.reply(dpp::message("You must set a status channel before add custom server buttons!").set_flags(dpp::m_ephemeral));
+		return;
+	}
+
+	std::unique_lock lock(config->m_mutex);
+
+	std::smatch matches;
+	const auto serverID = Server::ParseServerIDFromComponentID(event.custom_id, Server::AddCustomButton::FormPattern, matches);
+	if (!serverID.has_value())
+	{
+		event.reply(dpp::message("Could not parse server ID from custom button form!").set_flags(dpp::m_ephemeral));
+		return;
+	}
+
+	Server* server;
+	if (server = Servers::find(*serverID); !server)
+	{
+		event.reply(dpp::message("Could not find the (possibly deleted) server corresponding to that form").set_flags(dpp::m_ephemeral));
+		return;
+	}
+
+	if (server->m_buttons.size() >= Server::CustomButton::MaxButtons)
+	{
+		event.reply(dpp::message(std::format("Exceeded the number of maximum custom buttons {}!", Server::CustomButton::MaxButtons)).set_flags(dpp::m_ephemeral));
+		return;
+	}
+
+	const uint64_t id = (uint64_t)event.command.id;
+	const std::string& buttonName = std::get<std::string>(event.components[0].components[0].value);
+	const std::string& endpoint = std::get<std::string>(event.components[1].components[0].value);
+
+	server->m_buttons.emplace_back(id, buttonName, endpoint, server->m_id);
+
+	{
+		auto client = m_databasePool.acquire();
+		server->updateCustomButtons(*client);
+	}
+
+	updateServerStatusWidget(*config);
+
+	event.reply(dpp::message("Custom button added successfully!").set_flags(dpp::m_ephemeral));
+	auto logMessage = std::make_shared<GuildEmbedMessage>("Added new custom button", config->m_guildID);
+	logMessage->user = event.command.usr;
+	logMessage->fields.emplace_back("Server", server->m_name);
+	logMessage->fields.emplace_back("Label", buttonName);
+	logMessage->fields.emplace_back("Endpoint", endpoint);
+	m_bot.componentLog(logMessage);
 }
 
 void ServerStatusComponent::onRemoveCustomServerButtonButton(const dpp::button_click_t& event)
 {
+	const auto guild = (uint64_t)event.command.guild_id;
+
+	ServerConfig* config;
+	if (config = ServerConfigs::find(guild); !config)
+	{
+		event.reply(dpp::message("You must set a status channel before removing custom server buttons!").set_flags(dpp::m_ephemeral));
+		return;
+	}
+
+	std::shared_lock lock(config->m_mutex);
+
+	std::smatch matches;
+	const auto serverID = Server::ParseServerIDFromComponentID(event.custom_id, Server::RemoveCustomButton::ButtonPattern, matches);
+	if (!serverID.has_value())
+	{
+		event.reply(dpp::message(kButtonServerParseError).set_flags(dpp::m_ephemeral));
+		return;
+	}
+
+	Server* server;
+	if (server = Servers::find(*serverID); !server)
+	{
+		event.reply(dpp::message(kButtonMissingServer).set_flags(dpp::m_ephemeral));
+		return;
+	}
+
+	if (server->m_buttons.empty())
+	{
+		event.reply(dpp::message("No custom buttons to remove!").set_flags(dpp::m_ephemeral));
+		return;
+	}
+
+	event.reply(dpp::message()
+		.add_component(server->getRemoveCustomButtonComponent())
+		.set_flags(dpp::m_ephemeral)
+	);
+}
+
+void ServerStatusComponent::onRemoveCustomServerButtonSelect(const dpp::select_click_t& event)
+{
+	const auto guild = (uint64_t)event.command.guild_id;
+
+	ServerConfig* config;
+	if (config = ServerConfigs::find(guild); !config)
+	{
+		event.reply(dpp::message("You must set a status channel before removing custom server buttons!").set_flags(dpp::m_ephemeral));
+		return;
+	}
+
+	std::unique_lock lock(config->m_mutex);
+
+	std::smatch matches;
+	const auto serverID = Server::ParseServerIDFromComponentID(event.custom_id, Server::RemoveCustomButton::OptionPattern, matches);
+	if (!serverID.has_value())
+	{
+		event.reply(dpp::message("Could not parse server ID from the select option!").set_flags(dpp::m_ephemeral));
+		return;
+	}
+
+	Server* server;
+	if (server = Servers::find(*serverID); !server)
+	{
+		event.reply(dpp::message("Could not find the (possibly deleted) server corresponding to that select menu!"));
+		return;
+	}
+
 }
 
 void ServerStatusComponent::updateServerStatusWidget(const ServerConfig& config)
@@ -789,7 +984,7 @@ dpp::message ServerStatusComponent::getServerStatusWidget(const ServerConfig& co
 			.set_id(ServerStatusWidget::WidgetSettings)
 			.set_type(dpp::cot_button);
 
-	if (message.components.empty() || message.components.back().components.size() % Server::ButtonsPerRow == 0)
+	if (message.components.empty() || message.components.back().components.size() % Server::CustomButton::ButtonsPerRow == 0)
 		message.add_component(dpp::component().add_component(std::move(settingsButton)));
 	else
 		message.components.back().add_component(std::move(settingsButton));

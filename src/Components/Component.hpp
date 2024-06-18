@@ -32,6 +32,7 @@ struct SelectCommand
 {
 	std::string id;
 	SelectFunction selectFunction;
+	MatchType type = MatchType::EXACT;
 };
 
 typedef std::function<void(const dpp::form_submit_t&)> FormFunction;
@@ -39,6 +40,7 @@ struct FormCommand
 {
 	std::string id;
 	FormFunction formFunction;
+	MatchType type = MatchType::EXACT;
 };
 
 class ComponentLogMessage

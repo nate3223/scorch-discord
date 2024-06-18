@@ -3,6 +3,7 @@
 #include "Document.hpp"
 #include "StaticCache.hpp"
 
+#include <regex>
 #include <string>
 
 class ServerButton

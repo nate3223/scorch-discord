@@ -80,25 +80,57 @@ void DiscordBot::addComponent(Args&&... args)
 					m_bot->log(dpp::loglevel::ll_error, std::format("Prefix command '{}' conflicts with '{}'!", buttonCommand.id, it->id));
 				else
 					m_buttonPrefixCommands.push_back(buttonCommand);
+				break;
 		}
 	}
 
 	for (SelectCommand& selectCommand : component->getSelectCommands())
 	{
-		m_bot->log(dpp::loglevel::ll_info, std::format("Adding select command {}", selectCommand.id));
-		if (m_selectCommands.contains(selectCommand.id))
-			m_bot->log(dpp::loglevel::ll_error, std::format("Command '{}' is already registered!", selectCommand.id));
-		else
-			m_selectCommands[selectCommand.id] = selectCommand.selectFunction;
+		switch (selectCommand.type)
+		{
+			case (MatchType::EXACT):
+				m_bot->log(dpp::loglevel::ll_info, std::format("Adding select command {}", selectCommand.id));
+				if (m_selectCommands.contains(selectCommand.id))
+					m_bot->log(dpp::loglevel::ll_error, std::format("Command '{}' is already registered!", selectCommand.id));
+				else
+					m_selectCommands[selectCommand.id] = selectCommand.selectFunction;
+				break;
+			case (MatchType::PREFIX):
+				m_bot->log(dpp::loglevel::ll_info, std::format("Adding select prefix command {}", selectCommand.id));
+				if (auto it = std::find_if(m_selectPrefixCommands.begin(), m_selectPrefixCommands.end(), [selectCommand](const SelectCommand& command) {
+					return command.id.starts_with(selectCommand.id) || selectCommand.id.starts_with(command.id);
+					}); it != m_selectPrefixCommands.end()
+				)
+					m_bot->log(dpp::loglevel::ll_error, std::format("Prefix command '{}' conflicts with '{}'!", selectCommand.id, it->id));
+				else
+					m_selectPrefixCommands.push_back(selectCommand);
+				break;
+		}
+		
 	}
 
 	for (FormCommand& formCommand : component->getFormCommands())
 	{
-		m_bot->log(dpp::loglevel::ll_info, std::format("Adding form command {}", formCommand.id));
-		if (m_formCommands.contains(formCommand.id))
-			m_bot->log(dpp::loglevel::ll_error, std::format("Command '{}' is already registered!", formCommand.id));
-		else
-			m_formCommands[formCommand.id] = formCommand.formFunction;
+		switch (formCommand.type)
+		{
+			case (MatchType::EXACT):
+				m_bot->log(dpp::loglevel::ll_info, std::format("Adding form command {}", formCommand.id));
+				if (m_formCommands.contains(formCommand.id))
+					m_bot->log(dpp::loglevel::ll_error, std::format("Command '{}' is already registered!", formCommand.id));
+				else
+					m_formCommands[formCommand.id] = formCommand.formFunction;
+				break;
+			case (MatchType::PREFIX):
+				m_bot->log(dpp::loglevel::ll_info, std::format("Adding form prefix command {}", formCommand.id));
+				if (auto it = std::find_if(m_formPrefixCommands.begin(), m_formPrefixCommands.end(), [formCommand](const FormCommand& command) {
+					return command.id.starts_with(formCommand.id) || formCommand.id.starts_with(command.id);
+					}); it != m_formPrefixCommands.end()
+						)
+					m_bot->log(dpp::loglevel::ll_error, std::format("Prefix command '{}' conflicts with '{}'!", formCommand.id, it->id));
+				else
+					m_formPrefixCommands.push_back(formCommand);
+				break;
+		}
 	}
 
 	m_components.push_back(std::move(component));
@@ -172,6 +204,11 @@ void DiscordBot::onSelectClick(const dpp::select_click_t& event)
 	const auto& selectID = event.custom_id;
 	if (auto selectCommand = m_selectCommands.find(selectID); selectCommand != m_selectCommands.end())
 		selectCommand->second(event);
+	else if (auto selectCommand = std::find_if(m_selectPrefixCommands.begin(), m_selectPrefixCommands.end(), [selectID](const auto& command) {
+			return selectID.starts_with(command.id);
+		}); selectCommand != m_selectPrefixCommands.end()
+	)
+		selectCommand->selectFunction(event);
 	else
 		m_bot->log(dpp::loglevel::ll_error, std::format("Unknown select command '{}'!", selectID));
 }
@@ -181,6 +218,11 @@ void DiscordBot::onFormSubmit(const dpp::form_submit_t& event)
 	const auto& formID = event.custom_id;
 	if (auto formCommand = m_formCommands.find(formID); formCommand != m_formCommands.end())
 		formCommand->second(event);
+	else if (auto formCommand = std::find_if(m_formPrefixCommands.begin(), m_formPrefixCommands.end(), [formID](const auto& command) {
+			return formID.starts_with(command.id);
+		}); formCommand != m_formPrefixCommands.end()
+			)
+		formCommand->formFunction(event);
 	else
 		m_bot->log(dpp::loglevel::ll_error, std::format("Unknown form command '{}'!", formID));
 }

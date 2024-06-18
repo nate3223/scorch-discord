@@ -42,7 +42,9 @@ public:
 	void	onServerSettingsButton(const dpp::button_click_t& event);
 
 	void	onAddCustomServerButtonButton(const dpp::button_click_t& event);
+	void	onAddCustomServerButtonForm(const dpp::form_submit_t& event);
 	void	onRemoveCustomServerButtonButton(const dpp::button_click_t& event);
+	void	onRemoveCustomServerButtonSelect(const dpp::select_click_t& event);
 
 protected:
 	void			updateServerStatusWidget(const ServerConfig& config);

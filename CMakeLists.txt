@@ -47,7 +47,7 @@ add_executable(${PROJECT_NAME}
     src/Components/Yippee/YippeeComponent.cpp
 
 	src/Database/DatabaseManager.cpp
-	src/Database/MongoDB/Document.cpp
+	
 	src/Database/MongoDB/MongoDBManager.cpp
  )
 
