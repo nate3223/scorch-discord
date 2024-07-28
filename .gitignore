@@ -5,6 +5,7 @@ vcpkg_installed/
 .idea
 cmake*/
 .vs/
+CMakeUserPresets.json
 
 # Prerequisites
 *.d

@@ -10,6 +10,7 @@ namespace
 		constexpr char ID[]			= "id";
 		constexpr char Name[]		= "name";
 		constexpr char Address[]	= "address";
+		constexpr char URL[]		= "url";
 		constexpr char GuildID[]	= "guildID";
 		constexpr char Buttons[]	= "buttons";
 		constexpr char Endpoint[]	= "endpoint";
@@ -63,11 +64,12 @@ void Server::BulkRemoveFromDatabase(const std::vector<uint64_t>& ids, const mong
 	client.database(MongoDB::DATABASE_NAME)[Database::Collection].delete_many(make_document(kvp(Database::ID, make_document(kvp("$in", arr)))));
 }
 
-Server::Server(const uint64_t id, const std::string& name, const std::string& address, const uint64_t guildID)
+Server::Server(const uint64_t id, const std::string& name, const std::string& address, const uint64_t guildID, const std::string& url)
 	: m_id(id)
 	, m_name(name)
 	, m_address(address)
 	, m_guildID(guildID)
+	, m_url(url)
 {
 }
 
@@ -81,6 +83,8 @@ Server::Server(const bsoncxx::document::view& view)
 		m_address = std::string(address.get_string().value);
 	if (const auto& guildID = view[Database::GuildID]; guildID)
 		m_guildID = (uint64_t)guildID.get_int64().value;
+	if (const auto& url = view[Database::URL]; url)
+		m_url = std::string(url.get_string().value);
 	if (const auto& buttons = view[Database::Buttons]; buttons)
 	{
 		for (const auto& doc : buttons.get_array().value)
@@ -94,7 +98,8 @@ bsoncxx::document::value Server::getValue() const
 		kvp(Database::ID, (int64_t)m_id),
 		kvp(Database::Name, m_name.c_str()),
 		kvp(Database::Address, m_address.c_str()),
-		kvp(Database::GuildID, (int64_t)m_guildID)
+		kvp(Database::GuildID, (int64_t)m_guildID),
+		kvp(Database::URL, m_url.c_str())
 	);
 }
 
@@ -116,8 +121,8 @@ dpp::embed Server::getEmbed() const
 {
 	return dpp::embed()
 		.set_title(m_name)
-		.add_field("IP Address", "TestServer.com")
-		.add_field("Player Count", "10")
+		.add_field("IP Address", m_url)
+		.add_field("More info coming soon", "")
 		.set_timestamp(time(0));
 }
 
@@ -221,6 +226,24 @@ bool Server::onCustomButtonPressed(const std::smatch& matches)
 	if (auto it = std::find_if(m_buttons.begin(), m_buttons.end(), [buttonID](const ServerButton& button) { return button.m_id == buttonID; }); it != m_buttons.end())
 		return it->press();
 	return false;
+}
+
+std::optional<ServerButton> Server::getServerButton(const std::smatch& matches)
+{
+	uint64_t buttonID;
+	try
+	{
+		buttonID = std::stoull(matches[2]);
+	}
+	catch (const std::exception& e)
+	{
+		return std::nullopt;
+	}
+
+	if (auto it = std::find_if(m_buttons.begin(), m_buttons.end(), [buttonID](const ServerButton& button) { return button.m_id == buttonID; }); it != m_buttons.end())
+		return *it;
+
+	return std::nullopt;
 }
 
 std::string Server::formatComponentID(const char* prefix) const

@@ -28,6 +28,7 @@ namespace
 		constexpr auto Form			= "AddServerModal";
 		constexpr auto ServerName	= "AddServerModalServerName";
 		constexpr auto Address		= "AddServerModalAddress";
+		constexpr auto URL			= "AddServerURL";
 		constexpr auto Emoji		= "AddServerModalEmoji";
 		constexpr auto Emojis		= { dpp::unicode_emoji::globe_with_meridians, dpp::unicode_emoji::rainbow_flag, dpp::unicode_emoji::tada, dpp::unicode_emoji::clown, dpp::unicode_emoji::hearts, dpp::unicode_emoji::sauropod, dpp::unicode_emoji::goose, dpp::unicode_emoji::four_leaf_clover, dpp::unicode_emoji::lotus, dpp::unicode_emoji::star2, dpp::unicode_emoji::snowflake, dpp::unicode_emoji::fire, dpp::unicode_emoji::hamburger, dpp::unicode_emoji::champagne_glass, dpp::unicode_emoji::island, dpp::unicode_emoji::rocket, dpp::unicode_emoji::night_with_stars, dpp::unicode_emoji::gem, dpp::unicode_emoji::pushpin, dpp::unicode_emoji::mirror_ball, dpp::unicode_emoji::lock, dpp::unicode_emoji::heart_on_fire, dpp::unicode_emoji::sos, dpp::unicode_emoji::warning };
 		constexpr auto NoChannel	= "You must set a status channel before adding a server!";
@@ -321,8 +322,9 @@ void ServerStatusComponent::onAddServerForm(const dpp::form_submit_t& event)
 	const auto id = (uint64_t)event.command.id;
 	const std::string& serverName = std::get<std::string>(event.components[0].components[0].value);
 	const std::string& address = std::get<std::string>(event.components[1].components[0].value);
+	const std::string& url = std::get <std::string>(event.components[2].components[0].value);
 
-	Server* server = new Server(id, serverName, address, guild);
+	Server* server = new Server(id, serverName, address, guild, url);
 	Servers::store(id, std::unique_ptr<Server>(server));
 
 	config->m_serverIDs.push_back(id);
@@ -525,12 +527,21 @@ void ServerStatusComponent::onServerCustomButton(const dpp::button_click_t& even
 		return;
 	}
 
-	if (!server->onCustomButtonPressed(matches))
+	auto serverButton = server->getServerButton(matches);
+	if (!serverButton.has_value())
 	{
+		event.reply(dpp::message("Could not find the (possibly deleted) button!").set_flags(dpp::m_ephemeral));
 		return;
 	}
 
-	event.reply();
+	m_bot->request(serverButton->m_endpoint, dpp::m_get, [event](const dpp::http_request_completion_t& callback) {
+		if (callback.status < 200 || callback.status >= 300)
+		{
+			return;
+		}
+
+		event.reply();
+	});
 }
 
 void ServerStatusComponent::onWidgetSettingsButton(const dpp::button_click_t& event)
@@ -708,6 +719,13 @@ void ServerStatusComponent::onServerSettingsButton(const dpp::button_click_t& ev
 
 	std::shared_lock lock(config->m_mutex);
 
+	dpp::channel* channel = dpp::find_channel(event.command.channel_id);
+	if (channel == nullptr || !channel->get_user_permissions(&event.command.usr).can(dpp::p_administrator))
+	{
+		event.reply(dpp::message("You do not have permission to view the server settings!").set_flags(dpp::m_ephemeral));
+		return;
+	}
+
 	std::smatch matches;
 	const auto serverID = Server::ParseServerIDFromComponentID(event.custom_id, Server::Settings::ButtonPattern, matches);
 	if (!serverID.has_value())
@@ -741,6 +759,13 @@ void ServerStatusComponent::onAddCustomServerButtonButton(const dpp::button_clic
 	}
 
 	std::shared_lock lock(config->m_mutex);
+
+	dpp::channel* channel = dpp::find_channel(event.command.channel_id);
+	if (channel == nullptr || !channel->get_user_permissions(&event.command.usr).can(dpp::p_administrator))
+	{
+		event.reply(dpp::message("You do not have permission to add server buttons!").set_flags(dpp::m_ephemeral));
+		return;
+	}
 
 	std::smatch matches;
 	const auto serverID = Server::ParseServerIDFromComponentID(event.custom_id, Server::AddCustomButton::ButtonPattern, matches);
@@ -778,6 +803,13 @@ void ServerStatusComponent::onAddCustomServerButtonForm(const dpp::form_submit_t
 	}
 
 	std::unique_lock lock(config->m_mutex);
+
+	dpp::channel* channel = dpp::find_channel(event.command.channel_id);
+	if (channel == nullptr || !channel->get_user_permissions(&event.command.usr).can(dpp::p_administrator))
+	{
+		event.reply(dpp::message("You do not have permission to add server buttons!").set_flags(dpp::m_ephemeral));
+		return;
+	}
 
 	std::smatch matches;
 	const auto serverID = Server::ParseServerIDFromComponentID(event.custom_id, Server::AddCustomButton::FormPattern, matches);
@@ -835,6 +867,13 @@ void ServerStatusComponent::onRemoveCustomServerButtonButton(const dpp::button_c
 
 	std::shared_lock lock(config->m_mutex);
 
+	dpp::channel* channel = dpp::find_channel(event.command.channel_id);
+	if (channel == nullptr || !channel->get_user_permissions(&event.command.usr).can(dpp::p_administrator))
+	{
+		event.reply(dpp::message("You do not have permission to remove server buttons!").set_flags(dpp::m_ephemeral));
+		return;
+	}
+
 	std::smatch matches;
 	const auto serverID = Server::ParseServerIDFromComponentID(event.custom_id, Server::RemoveCustomButton::ButtonPattern, matches);
 	if (!serverID.has_value())
@@ -865,31 +904,87 @@ void ServerStatusComponent::onRemoveCustomServerButtonButton(const dpp::button_c
 void ServerStatusComponent::onRemoveCustomServerButtonSelect(const dpp::select_click_t& event)
 {
 	const auto guild = (uint64_t)event.command.guild_id;
+	std::vector<ServerButton> activeButtons;
+	std::vector<std::string> buttonsToDelete(event.values);
+	std::string deletedButtons;
+	Server* server;
 
 	ServerConfig* config;
 	if (config = ServerConfigs::find(guild); !config)
 	{
-		event.reply(dpp::message("You must set a status channel before removing custom server buttons!").set_flags(dpp::m_ephemeral));
+		event.reply(dpp::message("You must set a status channel before removing server buttons!").set_flags(dpp::m_ephemeral));
 		return;
 	}
 
-	std::unique_lock lock(config->m_mutex);
-
-	std::smatch matches;
-	const auto serverID = Server::ParseServerIDFromComponentID(event.custom_id, Server::RemoveCustomButton::OptionPattern, matches);
-	if (!serverID.has_value())
 	{
-		event.reply(dpp::message("Could not parse server ID from the select option!").set_flags(dpp::m_ephemeral));
-		return;
+		std::unique_lock lock(config->m_mutex);
+
+		dpp::channel* channel = dpp::find_channel(event.command.channel_id);
+		if (channel == nullptr || !channel->get_user_permissions(&event.command.usr).can(dpp::p_administrator))
+		{
+			event.reply(dpp::message("You do not have permission to remove server buttons!").set_flags(dpp::m_ephemeral));
+			return;
+		}
+
+		std::smatch matches;
+		const auto serverID = Server::ParseServerIDFromComponentID(event.custom_id, Server::RemoveCustomButton::OptionPattern, matches);
+		if (!serverID.has_value())
+		{
+			event.reply(dpp::message("Could not parse server ID from the select option!").set_flags(dpp::m_ephemeral));
+			return;
+		}
+
+		if (server = Servers::find(*serverID); !server)
+		{
+			event.reply(dpp::message("Could not find the (possibly deleted) server corresponding to that select menu!"));
+			return;
+		}
+
+		std::vector<uint64_t> deletedIDs(event.values.size());
+		std::copy_if(server->m_buttons.begin(), server->m_buttons.end(), std::back_inserter(activeButtons), [&buttonsToDelete, &deletedButtons, config, &deletedIDs, this](const ServerButton& button) {
+			if (const auto it = std::find(buttonsToDelete.begin(), buttonsToDelete.end(), std::to_string(button.m_id)); it != buttonsToDelete.end())
+			{
+				buttonsToDelete.erase(it);
+				deletedIDs.push_back(button.m_id);
+				deletedButtons += std::format("  - {}\n", button.m_name);
+				return false;
+			}
+
+			return true;
+			});
+
+		server->m_buttons = std::move(activeButtons);
+
+		{
+			auto client = m_databasePool.acquire();
+			server->updateCustomButtons(*client);
+		}
+
+		updateServerStatusWidget(*config);
 	}
 
-	Server* server;
-	if (server = Servers::find(*serverID); !server)
+	std::string notFoundButtons;
+	for (const auto& button : buttonsToDelete)
 	{
-		event.reply(dpp::message("Could not find the (possibly deleted) server corresponding to that select menu!"));
-		return;
+		if (const auto it = std::find_if(event.command.msg.components[0].components[0].options.begin(),
+			event.command.msg.components[0].components[0].options.end(),
+			[button](const dpp::select_option& option) { return option.value == button; });
+			it != event.command.msg.components[0].components[0].options.end()
+			)
+			notFoundButtons += std::format("  - {}\n", it->label);
 	}
 
+	std::string message("```\n");
+	if (!deletedButtons.empty())
+		message += std::format("Removed buttons from {}:\n{}", server->m_name, deletedButtons);
+	if (!notFoundButtons.empty())
+		message += std::format("Could not find the following (possibly deleted) buttons:\n{}", notFoundButtons);
+	message += "```";
+
+	event.reply(dpp::message(message).set_flags(dpp::m_ephemeral));
+	auto logMessage = std::make_shared<GuildEmbedMessage>(message, guild);
+	logMessage->user = event.command.usr;
+	m_bot.componentLog(logMessage);
 }
 
 void ServerStatusComponent::updateServerStatusWidget(const ServerConfig& config)
@@ -925,6 +1020,16 @@ dpp::interaction_modal_response ServerStatusComponent::getAddServerModal()
 		dpp::component()
 		.set_label("Address for API endpoint")
 		.set_id(AddServer::Address)
+		.set_type(dpp::cot_text)
+		.set_text_style(dpp::text_short)
+		.set_required(true)
+	);
+
+	modal.add_row();
+	modal.add_component(
+		dpp::component()
+		.set_label("Advertised server connection URL")
+		.set_id(AddServer::URL)
 		.set_type(dpp::cot_text)
 		.set_text_style(dpp::text_short)
 		.set_required(true)

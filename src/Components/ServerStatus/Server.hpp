@@ -8,6 +8,7 @@
 #include <format>
 #include <memory>
 #include <mongocxx/client.hpp>
+#include <optional>
 #include <regex>
 #include <string>
 #include <vector>
@@ -21,7 +22,7 @@ public:
 	static void									BulkRemoveFromDatabase(const std::vector<uint64_t>& ids, const mongocxx::client& client);
 
 	Server() = default;
-	Server(const uint64_t id, const std::string& name, const std::string& address, const uint64_t guildID);
+	Server(const uint64_t id, const std::string& name, const std::string& address, const uint64_t guildID, const std::string& url);
 	Server(const bsoncxx::document::view& view);
 
 	// Document
@@ -39,11 +40,13 @@ public:
 	dpp::component					getRemoveCustomButtonComponent() const;
 
 	bool							onCustomButtonPressed(const std::smatch& matches);
+	std::optional<ServerButton>		getServerButton(const std::smatch& matches);
 
 	uint64_t					m_id{ 0 };
 	std::string					m_name;
 	std::string					m_address;
 	uint64_t					m_guildID{ 0 };
+	std::string					m_url;
 	std::vector<ServerButton>	m_buttons;
 
 private:
