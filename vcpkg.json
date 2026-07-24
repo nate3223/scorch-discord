@@ -1,19 +1,23 @@
 {
+  "name": "scorch",
+  "version-string": "0.1.0",
+  "builtin-baseline": "40f3c709db80acf154ac4b17a1f83c564ebd022e",
   "dependencies": [
     "boost-unordered",
     {
       "name": "dpp",
-      "version>=": "10.0.30"
+      "version>=": "10.1.5"
     },
     {
       "name": "libsodium",
-      "version>=": "1.0.20"
+      "version>=": "1.0.22"
     },
     {
       "name": "mongo-cxx-driver",
-      "version>=": "3.10.1"
+      "version>=": "4.4.0"
     },
     "spdlog",
-    "opus"
+    "opus",
+    "openssl"
   ]
 }

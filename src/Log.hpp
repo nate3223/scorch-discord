@@ -36,7 +36,7 @@ namespace Logger
 	{
 	public:
 		MongoDBLogger() = default;
-		void operator()(mongocxx::log_level level, mongocxx::stdx::string_view domain, mongocxx::stdx::string_view message) noexcept;
+		void operator()(mongocxx::log_level level, bsoncxx::v1::stdx::string_view domain, bsoncxx::v1::stdx::string_view message) noexcept;
 	};
 
 }
