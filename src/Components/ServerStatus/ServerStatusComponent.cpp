@@ -320,9 +320,9 @@ void ServerStatusComponent::onAddServerForm(const dpp::form_submit_t& event)
 	}
 
 	const auto id = (uint64_t)event.command.id;
-	const std::string& serverName = std::get<std::string>(event.components[0].components[0].value);
-	const std::string& address = std::get<std::string>(event.components[1].components[0].value);
-	const std::string& url = std::get <std::string>(event.components[2].components[0].value);
+	const std::string& serverName = std::get<std::string>(event.components[0].value);
+	const std::string& address = std::get<std::string>(event.components[1].value);
+	const std::string& url = std::get <std::string>(event.components[2].value);
 
 	Server* server = new Server(id, serverName, address, guild, url);
 	Servers::store(id, std::unique_ptr<Server>(server));
@@ -464,10 +464,10 @@ void ServerStatusComponent::onRemoveServerSelect(const dpp::select_click_t& even
 	std::string notFoundServers;
 	for (const auto& server : serversToDelete)
 	{
-		if (const auto it = std::find_if(event.command.msg.components[0].components[0].options.begin(), 
-										 event.command.msg.components[0].components[0].options.end(),
+		if (const auto it = std::find_if(event.command.msg.components[0].options.begin(), 
+										 event.command.msg.components[0].options.end(),
 										 [server](const dpp::select_option& option) { return option.value == server; });
-			it != event.command.msg.components[0].components[0].options.end()
+			it != event.command.msg.components[0].options.end()
 		)
 			notFoundServers += std::format("  - {}\n", it->label);
 	}
@@ -833,8 +833,8 @@ void ServerStatusComponent::onAddCustomServerButtonForm(const dpp::form_submit_t
 	}
 
 	const uint64_t id = (uint64_t)event.command.id;
-	const std::string& buttonName = std::get<std::string>(event.components[0].components[0].value);
-	const std::string& endpoint = std::get<std::string>(event.components[1].components[0].value);
+	const std::string& buttonName = std::get<std::string>(event.components[0].value);
+	const std::string& endpoint = std::get<std::string>(event.components[1].value);
 
 	server->m_buttons.emplace_back(id, buttonName, endpoint, server->m_id);
 
@@ -966,10 +966,10 @@ void ServerStatusComponent::onRemoveCustomServerButtonSelect(const dpp::select_c
 	std::string notFoundButtons;
 	for (const auto& button : buttonsToDelete)
 	{
-		if (const auto it = std::find_if(event.command.msg.components[0].components[0].options.begin(),
-			event.command.msg.components[0].components[0].options.end(),
+		if (const auto it = std::find_if(event.command.msg.components[0].options.begin(),
+			event.command.msg.components[0].options.end(),
 			[button](const dpp::select_option& option) { return option.value == button; });
-			it != event.command.msg.components[0].components[0].options.end()
+			it != event.command.msg.components[0].options.end()
 			)
 			notFoundButtons += std::format("  - {}\n", it->label);
 	}
