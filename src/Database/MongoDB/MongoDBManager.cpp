@@ -3,7 +3,7 @@
 #include "Log.hpp"
 #include <sstream>
 
-mongocxx::instance MongoDBManager::g_instance{std::make_unique<Logger::MongoDBLogger>()};
+mongocxx::instance MongoDBManager::g_instance{std::make_unique<MongoDBLogger>()};
 
 MongoDBManager::MongoDBManager()
 {

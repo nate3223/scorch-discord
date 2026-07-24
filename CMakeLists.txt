@@ -1,7 +1,4 @@
-﻿# CMakeList.txt : Top-level CMake project file, do global configuration
-# and include sub-projects here.
-#
-cmake_minimum_required (VERSION 3.25)
+﻿cmake_minimum_required (VERSION 3.25)
 
 if(DEFINED ENV{VCPKG_ROOT} AND NOT DEFINED CMAKE_TOOLCHAIN_FILE)
 	set(CMAKE_TOOLCHAIN_FILE "$ENV{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake" CACHE STRING "Vcpkg toolchain file")
@@ -28,10 +25,15 @@ find_package(Opus CONFIG REQUIRED)
 
 find_package(unofficial-sodium CONFIG REQUIRED)
 
+find_package(Boost REQUIRED COMPONENTS asio)
+
 # Create an executable
 add_executable(${PROJECT_NAME}
 	src/main.cpp
 	src/Log.cpp
+
+	src/Agents/Agent.cpp
+	src/Agents/AgentsManager.cpp
 
 	src/DiscordBot/DiscordBot.cpp
 
@@ -49,7 +51,7 @@ add_executable(${PROJECT_NAME}
 	src/Database/DatabaseManager.cpp
 	
 	src/Database/MongoDB/MongoDBManager.cpp
- )
+)
 
 set_target_properties(${PROJECT_NAME} PROPERTIES
 	CXX_STANDARD 23
@@ -61,6 +63,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE $<IF:$<TARGET_EXISTS:mongo::mongoc
 target_link_libraries(${PROJECT_NAME} PRIVATE Opus::opus)
 target_link_libraries(${PROJECT_NAME} PRIVATE dpp::dpp)
 target_link_libraries(${PROJECT_NAME} PRIVATE unofficial-sodium::sodium)
+target_link_libraries(${PROJECT_NAME} PRIVATE Boost::asio)
 
 if(NOT TARGET spdlog)
 	# Stand-alone build
@@ -72,6 +75,7 @@ add_compile_options(-Wall -Wextra -Wpedantic -Wpessimizing-move -Wredundant-move
 
 target_include_directories(${PROJECT_NAME} PRIVATE
 	src
+	src/Agents
 	src/Components
 	src/Components/Common
 	src/Components/Log

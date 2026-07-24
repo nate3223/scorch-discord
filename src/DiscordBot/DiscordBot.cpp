@@ -11,10 +11,17 @@
 #include <format>
 #include <thread>
 
+namespace
+{
+
+	constexpr auto kAgentsPort = "3224";
+
+}
+
 DiscordBot::DiscordBot(const char* token)
 {
 	m_bot = std::make_unique<dpp::cluster>(token, dpp::i_all_intents);
-	m_bot->on_log(dpp::utility::cout_logger());
+	m_bot->on_log(std::bind_front(&DiscordBot::onLog, this));
 	m_bot->on_ready(std::bind_front(&DiscordBot::onReady, this));
 	m_bot->on_slashcommand(std::bind_front(&DiscordBot::onSlashCommand, this));
 	m_bot->on_button_click(std::bind_front(&DiscordBot::onButtonClick, this));
@@ -26,6 +33,8 @@ DiscordBot::DiscordBot(const char* token)
 	addComponent<LogComponent>();
 	addComponent<YippeeComponent>();
 	addComponent<ServerStatusComponent>();
+
+	m_agentsManager.listen(::kAgentsPort);
 }
 
 void DiscordBot::start()
@@ -138,7 +147,7 @@ void DiscordBot::addComponent(Args&&... args)
 
 void DiscordBot::onLog(const dpp::log_t& event)
 {
-	spdlog::logger& log = Logger::getInstance();
+	spdlog::logger& log = Logger::DPP();
 	switch (event.severity) {
 	case dpp::ll_trace:
 		log.trace("{}", event.message);

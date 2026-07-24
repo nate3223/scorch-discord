@@ -1,5 +1,6 @@
 #pragma once
 
+#include "AgentsManager.hpp"
 #include "Component.hpp"
 
 #include <atomic>
@@ -45,4 +46,6 @@ private:
 	boost::unordered_flat_map<std::string, FormFunction>		m_formCommands;
 	std::vector<FormCommand>									m_formPrefixCommands;
 	boost::unordered_flat_map<dpp::snowflake, dpp::snowflake>	m_serverStatusChannel;
+
+	AgentsManager												m_agentsManager;
 };
