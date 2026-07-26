@@ -1,6 +1,8 @@
 #include "AgentConnection.hpp"
 #include "AgentConnection_p.hpp"
 
+#include "PairingCodeRequest.hpp"
+
 #include <boost/uuid/uuid.hpp>
 #include <boost/uuid/string_generator.hpp>
 
@@ -80,8 +82,8 @@ struct std::formatter<AgentState> : std::formatter<std::string_view> {
 	}
 };
 
-AgentConnection::AgentConnection(tcp::socket&& socket, asio::ssl::context& context, IAgentIdentityStore& store)
-	: m_p(std::make_unique<AgentConnectionPrivate>(std::move(socket), context, store))
+AgentConnection::AgentConnection(tcp::socket&& socket, asio::ssl::context& context, IAgentIdentityStore& store, PairingCodeManager& pairingCodeManager)
+	: m_p(std::make_unique<AgentConnectionPrivate>(std::move(socket), context, store, pairingCodeManager))
 {
 
 }
@@ -93,8 +95,9 @@ asio::awaitable<void> AgentConnection::run()
 
 AgentConnection::~AgentConnection() = default;
 
-AgentConnectionPrivate::AgentConnectionPrivate(tcp::socket&& socket, asio::ssl::context& context, IAgentIdentityStore& store)
+AgentConnectionPrivate::AgentConnectionPrivate(tcp::socket&& socket, asio::ssl::context& context, IAgentIdentityStore& store, PairingCodeManager& pairingCodeManager)
 	: m_store(store)
+	, m_pairingCodeManager(pairingCodeManager)
 	, m_socket(std::move(socket), context)
 	, m_logger(Logger::Agents())
 {
@@ -242,23 +245,44 @@ asio::awaitable<void> AgentConnectionPrivate::handlePairing()
 	bool success = true;
 
 	{
-		std::string pairingCode = generatePairingCode();
-		m_logger.info("Sending pairing code {} to UUID {}", pairingCode, m_uuid);
+		auto pairingCodeRequestPtr = m_pairingCodeManager.requestPairingCode();
 
-		co_await sendServerMessage([&pairingCode](ServerMessage& serverMessage) {
+		m_logger.info("Sending pairing code {} to UUID {}", pairingCodeRequestPtr->code, m_uuid);
+
+		co_await sendServerMessage([&pairingCodeRequestPtr](ServerMessage& serverMessage) {
 			auto pairCodeResult = serverMessage.initPairCode();
 			auto valid = pairCodeResult.initValid();
-			valid.setCode(kj::StringPtr(pairingCode.data(), pairingCode.size()));
-		});
+			valid.setCode(kj::StringPtr(pairingCodeRequestPtr->code.data(), pairingCodeRequestPtr->code.size()));
+			});
 
 		// Wait for pairingcode to be entered
+		const auto pairingCodeResult = co_await pairingCodeRequestPtr->waitUntil(std::chrono::seconds(5));
+		success = pairingCodeResult == PairingCodeResult::Success;
+
+		co_await sendServerMessage([&pairingCodeRequestPtr, pairingCodeResult](ServerMessage& serverMessage) {
+			auto pairingResult = serverMessage.initPairingResult();
+			switch (pairingCodeResult)
+			{
+				case PairingCodeResult::Success:
+				{
+					auto pairingSuccess = pairingResult.initSuccess();
+					pairingSuccess.setPairingInfo(pairingCodeRequestPtr->info);
+					break;
+				}
+				case PairingCodeResult::Timeout:
+				{
+					pairingResult.setTimedOut();
+					break;
+				}
+			}
+		});
 	}
 
-	co_await sendServerMessage([](ServerMessage& serverMessage) {
-		auto pairingResult = serverMessage.initPairingResult();
-		auto pairingSuccess = pairingResult.initSuccess();
-		pairingSuccess.setPairingInfo("Fill this out with info.");
-	});
+	if (! success)
+	{
+		resetState();
+		co_return;
+	}
 
 	co_await readAgentMessage([this, &success](AgentMessage& message) {
 		if (message.isPairingConfirmation())
@@ -403,12 +427,6 @@ bool AgentConnectionPrivate::verifyPublicKey(std::span<const std::byte>& publicK
 	EVP_PKEY_free(rawKey);
 
 	return true;
-}
-
-std::string AgentConnectionPrivate::generatePairingCode()
-{
-	// Generate free 6 char code, expires after 5 minutes
-	return "AAAAAA";
 }
 
 asio::awaitable<Buffer> AgentConnectionPrivate::read()

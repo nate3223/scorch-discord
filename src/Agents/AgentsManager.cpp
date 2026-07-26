@@ -24,11 +24,16 @@ void AgentsManager::listen(std::string port)
 	);
 }
 
+void AgentsManager::confirmPairing(std::string pairingCode, std::string info)
+{
+}
+
 AgentsManagerPrivate::AgentsManagerPrivate(std::unique_ptr<IAgentIdentityStore> store)
 	: m_store(std::move(store))
 	, m_logger(Logger::Agents())
 	, m_sslContext(asio::ssl::context::sslv23_server)
 	, m_acceptor(m_ioContext)
+	, m_pairingCodeManager(m_ioContext)
 	, m_workGuard(asio::make_work_guard(m_ioContext))
 	, m_ioThread([this](std::stop_token) {
 		m_ioContext.run();
@@ -97,7 +102,7 @@ asio::awaitable<void> AgentsManagerPrivate::acceptClient(tcp::socket&& client)
 
 	try
 	{
-		AgentConnection agentConnection(std::move(client), m_sslContext, *m_store.get());
+		AgentConnection agentConnection(std::move(client), m_sslContext, *m_store.get(), m_pairingCodeManager);
 		co_await agentConnection.run();
 	}
 	catch (const boost::system::system_error& e)

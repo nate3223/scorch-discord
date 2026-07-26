@@ -2,6 +2,7 @@
 
 #include "IAgentIdentityStore.hpp"
 #include "Log.hpp"
+#include "PairingCodeManager.hpp"
 
 #include <boost/asio.hpp>
 #include <boost/asio/buffer.hpp>
@@ -35,7 +36,12 @@ enum class AgentState
 class AgentConnectionPrivate
 {
 public:
-							AgentConnectionPrivate(tcp::socket&& socket, asio::ssl::context& context, IAgentIdentityStore& store);
+							AgentConnectionPrivate(
+								tcp::socket&& socket,
+								asio::ssl::context& context,
+								IAgentIdentityStore& store,
+								PairingCodeManager& pairingCodeManager
+							);
 
 	asio::awaitable<void>	run();
 
@@ -48,7 +54,6 @@ public:
 	// Pairing
 	bool					verifyNewUUID(std::string_view uuid);
 	bool					verifyPublicKey(std::span<const std::byte>& publicKey);
-	std::string				generatePairingCode();
 
 	template <typename Callback>
 		requires std::invocable<Callback, ServerMessage&>
@@ -92,6 +97,7 @@ public:
 	void							resetState();
 
 	IAgentIdentityStore&	m_store;
+	PairingCodeManager&		m_pairingCodeManager;
 	spdlog::logger&			m_logger;
 	TLSSocket				m_socket;
 	AgentState				m_state = AgentState::Connecting;

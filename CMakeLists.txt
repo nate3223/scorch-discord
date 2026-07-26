@@ -44,6 +44,7 @@ add_executable(${PROJECT_NAME}
 
 	src/Agents/AgentConnection.cpp
 	src/Agents/AgentsManager.cpp
+	src/Agents/PairingCodeManager.cpp
 
 	src/DiscordBot/DiscordBot.cpp
 

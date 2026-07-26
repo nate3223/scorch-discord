@@ -14,6 +14,7 @@ public:
 	~AgentsManager();
 
 	void	listen(std::string port);
+	void	confirmPairing(std::string pairingCode, std::string info);
 
 private:
 	std::unique_ptr<AgentsManagerPrivate>	m_p;
