@@ -1,4 +1,6 @@
-Scorch is a dynamic Discord server bot which tracks game server information, and allows for members within the server to control various aspects of the server via customisable, modular buttons.
+Scorch is a game server management platform that lets you remotely manage and control game servers through Discord. The Scorch Agent runs alongside a game server and securely communicates with the Scorch backend using authenticated, cryptographically verified connections.
+
+A Discord server bot is used to track game server information, and allows for members within the server to control various aspects of the server via customisable, modular buttons.
 
 ![image](https://github.com/user-attachments/assets/e96c5f96-2d00-4722-9ebc-4a4353ffe2a3)
 
