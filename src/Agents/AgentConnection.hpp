@@ -1,5 +1,7 @@
 #pragma once
 
+#include "IAgentIdentityStore.hpp"
+
 #include <boost/asio.hpp>
 #include <boost/asio/ssl.hpp>
 
@@ -10,7 +12,7 @@ class AgentConnectionPrivate;
 class AgentConnection
 {
 public:
-									AgentConnection(boost::asio::ip::tcp::socket&& socket, boost::asio::ssl::context& context);
+									AgentConnection(boost::asio::ip::tcp::socket&& socket, boost::asio::ssl::context& context, IAgentIdentityStore& store);
 									~AgentConnection();
 
 	boost::asio::awaitable<void>	run();

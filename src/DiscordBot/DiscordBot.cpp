@@ -6,6 +6,7 @@
 #include "YippeeComponent.hpp"
 
 #include "MongoDBManager.hpp"
+#include "MongoDBAgentIdentityStore.hpp"
 
 #include <algorithm>
 #include <format>
@@ -19,6 +20,7 @@ namespace
 }
 
 DiscordBot::DiscordBot(const char* token)
+	: m_agentsManager(std::make_unique<MongoDBAgentIdentityStore>())
 {
 	m_bot = std::make_unique<dpp::cluster>(token, dpp::i_all_intents);
 	m_bot->on_log(std::bind_front(&DiscordBot::onLog, this));

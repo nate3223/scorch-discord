@@ -1,5 +1,6 @@
 #pragma once
 
+#include "IAgentIdentityStore.hpp"
 #include "Log.hpp"
 
 #include <boost/asio.hpp>
@@ -34,7 +35,7 @@ enum class AgentState
 class AgentConnectionPrivate
 {
 public:
-							AgentConnectionPrivate(tcp::socket&& socket, asio::ssl::context& context);
+							AgentConnectionPrivate(tcp::socket&& socket, asio::ssl::context& context, IAgentIdentityStore& store);
 
 	asio::awaitable<void>	run();
 
@@ -48,10 +49,6 @@ public:
 	bool					verifyNewUUID(std::string_view uuid);
 	bool					verifyPublicKey(std::span<const std::byte>& publicKey);
 	std::string				generatePairingCode();
-	bool					savePublicKey(std::string_view uuid, Buffer& publicKey);
-
-	// Authenticating
-	bool					getPublicKey(std::string_view uuid, Buffer& publicKey);
 
 	template <typename Callback>
 		requires std::invocable<Callback, ServerMessage&>
@@ -94,10 +91,11 @@ public:
 	void							setState(AgentState state);
 	void							resetState();
 
-	spdlog::logger& m_logger;
-	TLSSocket		m_socket;
-	AgentState		m_state = AgentState::Connecting;
+	IAgentIdentityStore&	m_store;
+	spdlog::logger&			m_logger;
+	TLSSocket				m_socket;
+	AgentState				m_state = AgentState::Connecting;
 
-	std::string		m_uuid;
-	Buffer			m_publicKey;
+	std::string				m_uuid;
+	Buffer					m_publicKey;
 };

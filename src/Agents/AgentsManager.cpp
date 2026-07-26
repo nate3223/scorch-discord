@@ -6,8 +6,8 @@
 
 #include <format>
 
-AgentsManager::AgentsManager()
-	: m_p(std::make_unique<AgentsManagerPrivate>())
+AgentsManager::AgentsManager(std::unique_ptr<IAgentIdentityStore> store)
+	: m_p(std::make_unique<AgentsManagerPrivate>(std::move(store)))
 {
 
 }
@@ -24,8 +24,9 @@ void AgentsManager::listen(std::string port)
 	);
 }
 
-AgentsManagerPrivate::AgentsManagerPrivate()
-	: m_logger(Logger::Agents())
+AgentsManagerPrivate::AgentsManagerPrivate(std::unique_ptr<IAgentIdentityStore> store)
+	: m_store(std::move(store))
+	, m_logger(Logger::Agents())
 	, m_sslContext(asio::ssl::context::sslv23_server)
 	, m_acceptor(m_ioContext)
 	, m_workGuard(asio::make_work_guard(m_ioContext))
@@ -96,7 +97,7 @@ asio::awaitable<void> AgentsManagerPrivate::acceptClient(tcp::socket&& client)
 
 	try
 	{
-		AgentConnection agentConnection(std::move(client), m_sslContext);
+		AgentConnection agentConnection(std::move(client), m_sslContext, *m_store.get());
 		co_await agentConnection.run();
 	}
 	catch (const boost::system::system_error& e)

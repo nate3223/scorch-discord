@@ -80,8 +80,8 @@ struct std::formatter<AgentState> : std::formatter<std::string_view> {
 	}
 };
 
-AgentConnection::AgentConnection(tcp::socket&& socket, asio::ssl::context& context)
-	: m_p(std::make_unique<AgentConnectionPrivate>(std::move(socket), context))
+AgentConnection::AgentConnection(tcp::socket&& socket, asio::ssl::context& context, IAgentIdentityStore& store)
+	: m_p(std::make_unique<AgentConnectionPrivate>(std::move(socket), context, store))
 {
 
 }
@@ -93,8 +93,9 @@ asio::awaitable<void> AgentConnection::run()
 
 AgentConnection::~AgentConnection() = default;
 
-AgentConnectionPrivate::AgentConnectionPrivate(tcp::socket&& socket, asio::ssl::context& context)
-	: m_socket(std::move(socket), context)
+AgentConnectionPrivate::AgentConnectionPrivate(tcp::socket&& socket, asio::ssl::context& context, IAgentIdentityStore& store)
+	: m_store(store)
+	, m_socket(std::move(socket), context)
 	, m_logger(Logger::Agents())
 {
 
@@ -147,7 +148,7 @@ asio::awaitable<void> AgentConnectionPrivate::handleConnecting()
 			auto authInit = agentMessage.getAuthenticationInitiation();
 			std::string_view uuidView(authInit.getUuid().cStr(), authInit.getUuid().size());
 
-			if (! getPublicKey(uuidView, m_publicKey))
+			if (! m_store.loadPublicKey(uuidView, m_publicKey))
 			{
 				m_logger.info("Unknown UUID for Authentication Initiation: {}", uuidView);
 				state = State::AuthInitUnknownUUID;
@@ -273,7 +274,8 @@ asio::awaitable<void> AgentConnectionPrivate::handlePairing()
 	if (! success)
 		co_return;
 
-	if (savePublicKey(m_uuid, m_publicKey))
+	std::span<const std::byte> publicKeySpan(m_publicKey);
+	if (m_store.savePublicKey(m_uuid, publicKeySpan))
 		m_logger.info("Agent {} successfully registered", m_uuid);
 	else
 		m_logger.error("Failed to save public key for UUID {}", m_uuid);
@@ -407,22 +409,6 @@ std::string AgentConnectionPrivate::generatePairingCode()
 {
 	// Generate free 6 char code, expires after 5 minutes
 	return "AAAAAA";
-}
-
-static Buffer gPublicKey;
-
-bool AgentConnectionPrivate::savePublicKey(std::string_view uuid, Buffer& publicKey)
-{
-	gPublicKey = publicKey;
-	return true;
-}
-
-bool AgentConnectionPrivate::getPublicKey(std::string_view uuid, Buffer& publicKey)
-{
-	if (gPublicKey.empty())
-		return false;
-	publicKey = gPublicKey;
-	return true;
 }
 
 asio::awaitable<Buffer> AgentConnectionPrivate::read()

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "IAgentIdentityStore.hpp"
 #include "Log.hpp"
 
 #include <boost/asio.hpp>
@@ -16,7 +17,7 @@ using tcp = asio::ip::tcp;
 class AgentsManagerPrivate
 {
 public:
-			AgentsManagerPrivate();
+			AgentsManagerPrivate(std::unique_ptr<IAgentIdentityStore> store);
 			~AgentsManagerPrivate();
 
 	void					listen(std::string port);
@@ -24,6 +25,8 @@ public:
 	asio::awaitable<void>	acceptClient(tcp::socket&& client);
 
 	using WorkGuard = asio::executor_work_guard<asio::io_context::executor_type>;
+
+	std::unique_ptr<IAgentIdentityStore>	m_store;
 
 	spdlog::logger&		m_logger;
 	std::string			m_port;

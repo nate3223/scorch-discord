@@ -42,7 +42,7 @@ add_executable(${PROJECT_NAME}
 	src/main.cpp
 	src/Log.cpp
 
-	src/Agents/agentConnection.cpp
+	src/Agents/AgentConnection.cpp
 	src/Agents/AgentsManager.cpp
 
 	src/DiscordBot/DiscordBot.cpp
@@ -60,6 +60,7 @@ add_executable(${PROJECT_NAME}
 
 	src/Database/DatabaseManager.cpp
 	
+	src/Database/MongoDB/MongoDBAgentIdentityStore.cpp
 	src/Database/MongoDB/MongoDBManager.cpp
 )
 
