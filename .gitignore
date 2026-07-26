@@ -39,3 +39,7 @@ CMakeUserPresets.json
 *.exe
 *.out
 *.app
+
+# certs
+*.crt
+*.key

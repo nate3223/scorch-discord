@@ -15,6 +15,16 @@ if (POLICY CMP0141)
     endif()
 endif()
 
+include(FetchContent)
+
+FetchContent_Declare(
+	ScorchProtocol
+	GIT_REPOSITORY https://github.com/nate3223/scorch-protocol.git
+	GIT_TAG main
+)
+
+FetchContent_MakeAvailable(ScorchProtocol)
+
 find_package(OpenSSL REQUIRED)
 find_package(dpp CONFIG REQUIRED)
 
@@ -32,7 +42,7 @@ add_executable(${PROJECT_NAME}
 	src/main.cpp
 	src/Log.cpp
 
-	src/Agents/Agent.cpp
+	src/Agents/agentConnection.cpp
 	src/Agents/AgentsManager.cpp
 
 	src/DiscordBot/DiscordBot.cpp
@@ -63,7 +73,10 @@ target_link_libraries(${PROJECT_NAME} PRIVATE $<IF:$<TARGET_EXISTS:mongo::mongoc
 target_link_libraries(${PROJECT_NAME} PRIVATE Opus::opus)
 target_link_libraries(${PROJECT_NAME} PRIVATE dpp::dpp)
 target_link_libraries(${PROJECT_NAME} PRIVATE unofficial-sodium::sodium)
-target_link_libraries(${PROJECT_NAME} PRIVATE Boost::asio)
+target_link_libraries(${PROJECT_NAME} PRIVATE
+	Boost::asio
+	Scorch::Protocol	
+)
 
 if(NOT TARGET spdlog)
 	# Stand-alone build
@@ -84,4 +97,17 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 	src/DiscordBot
 	src/Database
 	src/Database/MongoDB
+)
+
+set(SERVER_CERTS
+	${CMAKE_CURRENT_SOURCE_DIR}/server.crt
+	${CMAKE_CURRENT_SOURCE_DIR}/server.key
+)
+
+add_custom_command(
+    TARGET ${PROJECT_NAME} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${SERVER_CERTS}
+        $<TARGET_FILE_DIR:${PROJECT_NAME}>
+    COMMENT "Copying server certificates to output directory..."
 )

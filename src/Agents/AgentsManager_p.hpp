@@ -11,14 +11,17 @@
 
 namespace asio = boost::asio;
 
+using tcp = asio::ip::tcp;
+
 class AgentsManagerPrivate
 {
 public:
 			AgentsManagerPrivate();
 			~AgentsManagerPrivate();
 
-	asio::awaitable<void>	run();
 	void					listen(std::string port);
+	asio::awaitable<void>	run();
+	asio::awaitable<void>	acceptClient(tcp::socket&& client);
 
 	using WorkGuard = asio::executor_work_guard<asio::io_context::executor_type>;
 
@@ -26,7 +29,9 @@ public:
 	std::string			m_port;
 	asio::io_context	m_ioContext;
 	asio::ssl::context	m_sslContext;
+
+	tcp::acceptor		m_acceptor;
+
 	WorkGuard			m_workGuard;
-	asio::steady_timer	m_listenSignal;
 	std::jthread		m_ioThread;
 };

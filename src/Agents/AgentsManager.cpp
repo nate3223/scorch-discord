@@ -1,6 +1,7 @@
 #include "AgentsManager.hpp"
 #include "AgentsManager_p.hpp"
 
+#include "AgentConnection.hpp"
 #include "Log.hpp"
 
 #include <format>
@@ -25,37 +26,34 @@ void AgentsManager::listen(std::string port)
 
 AgentsManagerPrivate::AgentsManagerPrivate()
 	: m_logger(Logger::Agents())
-	, m_sslContext(asio::ssl::context::tls_server)
+	, m_sslContext(asio::ssl::context::sslv23_server)
+	, m_acceptor(m_ioContext)
 	, m_workGuard(asio::make_work_guard(m_ioContext))
-	, m_listenSignal(m_ioContext, asio::steady_timer::clock_type::time_point::max())
 	, m_ioThread([this](std::stop_token) {
-		asio::co_spawn(m_ioContext, run(), asio::detached);
 		m_ioContext.run();
 	})
 {
+	try
+	{
+		m_sslContext.set_options(
+			asio::ssl::context::default_workarounds |
+			asio::ssl::context::no_sslv2 |
+			asio::ssl::context::no_sslv3 |
+			asio::ssl::context::single_dh_use
+		);
+
+		m_sslContext.use_certificate_chain_file("server.crt");
+		m_sslContext.use_private_key_file("server.key", asio::ssl::context::pem);
+	}
+	catch (const std::exception& e)
+	{
+		m_logger.error(std::format("Failed to load certificates: {}", e.what()));
+	}
 }
 
 AgentsManagerPrivate::~AgentsManagerPrivate()
 {
 	m_ioContext.stop();
-}
-
-asio::awaitable<void> AgentsManagerPrivate::run()
-{
-	boost::system::error_code ec;
-
-	co_await m_listenSignal.async_wait(
-		asio::redirect_error(asio::use_awaitable, ec)
-	);
-
-	if (ec != asio::error::operation_aborted)
-	{
-		co_return;
-	}
-
-	m_logger.info(std::format("Listening on port {}...", m_port));
-
-	co_return;
 }
 
 void AgentsManagerPrivate::listen(std::string port)
@@ -64,7 +62,51 @@ void AgentsManagerPrivate::listen(std::string port)
 		m_ioContext,
 		[this, port = std::move(port)]() mutable {
 			m_port = std::move(port);
-			m_listenSignal.cancel();
+			asio::co_spawn(m_ioContext, run(), asio::detached);
 		}
 	);
+}
+
+asio::awaitable<void> AgentsManagerPrivate::run()
+{
+	m_acceptor.open(tcp::v4());
+	m_acceptor.set_option(tcp::acceptor::reuse_address(true));
+	m_acceptor.bind({ tcp::v4(), static_cast<unsigned short>(std::stoi(m_port)) });
+
+	m_acceptor.listen();
+
+	m_logger.info(std::format("Listening on port {}...", m_port));
+
+	for (;;)
+	{
+		auto socket = co_await m_acceptor.async_accept(asio::use_awaitable);
+		asio::co_spawn(m_ioContext, acceptClient(std::move(socket)), asio::detached);
+	}
+
+	co_return;
+}
+
+asio::awaitable<void> AgentsManagerPrivate::acceptClient(tcp::socket&& client)
+{
+	const auto endpoint	= client.remote_endpoint();
+	const auto address	= endpoint.address().to_string();
+	const auto port		= endpoint.port();
+
+	m_logger.info(std::format("Client {}{} connected", address, port));
+
+	try
+	{
+		AgentConnection agentConnection(std::move(client), m_sslContext);
+		co_await agentConnection.run();
+	}
+	catch (const boost::system::system_error& e)
+	{
+		m_logger.info(std::format("Client {}{} disconnected: {}", address, port, e.what()));
+	}
+	catch (const std::exception& e)
+	{
+		m_logger.error(e.what());
+	}
+
+	co_return;
 }
