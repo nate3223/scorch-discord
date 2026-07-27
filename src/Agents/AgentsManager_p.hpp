@@ -30,13 +30,18 @@ public:
 	std::unique_ptr<IAgentIdentityStore>	m_store;
 	
 	spdlog::logger&		m_logger;
-	std::string			m_port;
+
+	// Must outlive all objects that use it.
 	asio::io_context	m_ioContext;
+
 	asio::ssl::context	m_sslContext;
+	std::string			m_port;
 
 	tcp::acceptor		m_acceptor;
 	PairingCodeManager	m_pairingCodeManager;
 
+	// Declared last so the IO thread is destroyed first.
+	// The destructor must stop the context before member destruction begins.
 	WorkGuard			m_workGuard;
 	std::jthread		m_ioThread;
 };

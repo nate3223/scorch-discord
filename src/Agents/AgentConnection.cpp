@@ -245,58 +245,82 @@ asio::awaitable<void> AgentConnectionPrivate::handlePairing()
 	bool success = true;
 
 	{
-		auto pairingCodeRequestPtr = m_pairingCodeManager.requestPairingCode();
+		auto pairingCodeRequestPtr = m_pairingCodeManager.requestPairingCode(m_uuid);
 
-		m_logger.info("Sending pairing code {} to UUID {}", pairingCodeRequestPtr->code, m_uuid);
-
-		co_await sendServerMessage([&pairingCodeRequestPtr](ServerMessage& serverMessage) {
+		co_await sendServerMessage([this, &pairingCodeRequestPtr, &success](ServerMessage& serverMessage) {
 			auto pairCodeResult = serverMessage.initPairCode();
-			auto valid = pairCodeResult.initValid();
-			valid.setCode(kj::StringPtr(pairingCodeRequestPtr->code.data(), pairingCodeRequestPtr->code.size()));
-			});
+			if (pairingCodeRequestPtr)
+			{
+				m_logger.info("Sending pairing code {} to UUID {}", pairingCodeRequestPtr->code, m_uuid);
+				auto valid = pairCodeResult.initValid();
+				valid.setCode(kj::StringPtr(pairingCodeRequestPtr->code.data(), pairingCodeRequestPtr->code.size()));
+			}
+			else
+			{
+				m_logger.info("Max attempts exceeded while trying to generate pairing code for UUID {}. Notifying agent to try again later", m_uuid);
+				pairCodeResult.setRetry();
+				success = false;
+			}
+		});
 
-		// Wait for pairingcode to be entered
-		const auto pairingCodeResult = co_await pairingCodeRequestPtr->waitUntil(std::chrono::seconds(5));
-		success = pairingCodeResult == PairingCodeResult::Success;
+		if (! success)
+		{
+			resetState();
+			co_return;
+		}
+
+		// Wait for pairing code to be entered
+		const auto pairingCodeResult = co_await pairingCodeRequestPtr->waitUntil(std::chrono::seconds(20));
+		success = pairingCodeResult == PairingCodeResult::Acknowledged;
 
 		co_await sendServerMessage([&pairingCodeRequestPtr, pairingCodeResult](ServerMessage& serverMessage) {
 			auto pairingResult = serverMessage.initPairingResult();
 			switch (pairingCodeResult)
 			{
-				case PairingCodeResult::Success:
-				{
-					auto pairingSuccess = pairingResult.initSuccess();
-					pairingSuccess.setPairingInfo(pairingCodeRequestPtr->info);
-					break;
-				}
-				case PairingCodeResult::Timeout:
-				{
-					pairingResult.setTimedOut();
-					break;
-				}
+			case PairingCodeResult::Acknowledged:
+			{
+				auto pairingSuccess = pairingResult.initSuccess();
+				pairingSuccess.setPairingInfo(pairingCodeRequestPtr->info);
+				break;
+			}
+			case PairingCodeResult::Timeout:
+			{
+				pairingResult.setTimedOut();
+				break;
+			}
 			}
 		});
-	}
 
-	if (! success)
-	{
-		resetState();
-		co_return;
-	}
-
-	co_await readAgentMessage([this, &success](AgentMessage& message) {
-		if (message.isPairingConfirmation())
+		if (! success)
 		{
-			auto pairingConfirmation = message.getPairingConfirmation();
-			if (! pairingConfirmation.isApproved())
+			resetState();
+			co_return;
+		}
+
+		co_await readAgentMessage([this, &success](AgentMessage& message) {
+			if (message.isPairingConfirmation())
 			{
-				m_logger.info("Pairing for UUID {} rejected by Agent", m_uuid);
+				auto pairingConfirmation = message.getPairingConfirmation();
+				if (! pairingConfirmation.isApproved())
+				{
+					m_logger.info("Pairing for UUID {} rejected by Agent", m_uuid);
+					success = false;
+				}
+			}
+			else
+			{
+				m_logger.error("Unexpected agent message. Expected a PairingConfirmation");
 				success = false;
 			}
+		});
+
+		pairingCodeRequestPtr->confirm(success);
+		if (! success)
+		{
+			resetState();
+			co_return;
 		}
-	});
-	if (! success)
-		co_return;
+	}
 
 	std::span<const std::byte> publicKeySpan(m_publicKey);
 	if (m_store.savePublicKey(m_uuid, publicKeySpan))
@@ -386,6 +410,9 @@ asio::awaitable<void> AgentConnectionPrivate::handleAuthenticating()
 asio::awaitable<void> AgentConnectionPrivate::handleConnected()
 {
 	assert(m_state == AgentState::Connected);
+	co_await readAgentMessage([](AgentMessage& agentMessage) {
+
+	});
 	co_return;
 }
 

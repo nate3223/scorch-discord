@@ -6,6 +6,7 @@
 #include <boost/asio/any_io_executor.hpp>
 
 #include <memory>
+#include <shared_mutex>
 
 namespace boost
 {
@@ -21,6 +22,7 @@ class PairingCodeManagerPrivate
 public:
 	PairingCodeManagerPrivate(boost::asio::io_context& context);
 
-	boost::unordered_flat_map<std::string, PairingCodeRequest*>	m_pendingRequests;
+	boost::unordered_flat_map<std::string, std::weak_ptr<PairingCodeRequest>>	m_pendingRequests;
 	boost::asio::any_io_executor	m_executor;
+	std::shared_mutex				m_mutex;
 };

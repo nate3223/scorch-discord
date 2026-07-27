@@ -73,9 +73,9 @@ void LogComponent::onSetLogChannel(const dpp::slashcommand_t& event)
 
 		std::string msg(std::format("Log channel changed to <#{}>", channel.str()));
 		event.edit_original_response(dpp::message(msg));
-		auto logMessage = std::make_shared<GuildEmbedMessage>(msg, guild);
+		auto logMessage = std::make_unique<GuildEmbedMessage>(msg, guild);
 		logMessage->user = event.command.usr;
-		m_bot.componentLog(logMessage);
+		m_bot.componentLog(std::move(logMessage));
 	});
 
 }

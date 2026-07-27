@@ -2,6 +2,7 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 
 struct PairingCodeRequest;
@@ -19,13 +20,13 @@ namespace boost
 class PairingCodeManager
 {
 public:
-	explicit				PairingCodeManager(boost::asio::io_context& ioContext);
-							~PairingCodeManager();
+	explicit							PairingCodeManager(boost::asio::io_context& ioContext);
+										~PairingCodeManager();
 
-	using PairingCodeRequestPtr = std::unique_ptr<PairingCodeRequest, std::function<void(PairingCodeRequest*)>>;
-	PairingCodeRequestPtr	requestPairingCode();
+	std::shared_ptr<PairingCodeRequest>	requestPairingCode(std::string agentUUID);
 
-	void					confirmPairing(std::string pairingCode, std::string info);
+	// Thread-safe
+	std::shared_ptr<PairingCodeRequest>	confirmPairing(const std::string& pairingCode, std::string info);
 
 private:
 	std::unique_ptr<PairingCodeManagerPrivate>	m_p;

@@ -51,6 +51,8 @@ add_executable(${PROJECT_NAME}
 	src/Components/Log/LogComponent.cpp
 	src/Components/Log/LogConfig.cpp
 
+	src/Components/Pair/PairComponent.cpp
+
 	src/Components/ServerStatus/Server.cpp
 	src/Components/ServerStatus/ServerButton.cpp
 	src/Components/ServerStatus/ServerConfig.cpp
@@ -94,11 +96,13 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 	src/Components
 	src/Components/Common
 	src/Components/Log
+	src/Components/Pair
 	src/Components/ServerStatus
 	src/Components/Yippee
 	src/DiscordBot
 	src/Database
 	src/Database/MongoDB
+	src/DPP
 )
 
 set(SERVER_CERTS

@@ -255,9 +255,9 @@ void ServerStatusComponent::onSetStatusChannel(const dpp::slashcommand_t& event)
 
 		std::string reply = std::format("Server status channel changed to <#{}>", channel.str());
 		event.edit_original_response(dpp::message(reply));
-		auto logMessage = std::make_shared<GuildEmbedMessage>(reply, guild);
+		auto logMessage = std::make_unique<GuildEmbedMessage>(reply, guild);
 		logMessage->user = event.command.usr;
-		m_bot.componentLog(logMessage);
+		m_bot.componentLog(std::move(logMessage));
 	});
 }
 
@@ -338,11 +338,11 @@ void ServerStatusComponent::onAddServerForm(const dpp::form_submit_t& event)
 	updateServerStatusWidget(*config);
 
 	event.reply(dpp::message("Server added successfully!").set_flags(dpp::m_ephemeral));
-	auto logMessage = std::make_shared<GuildEmbedMessage>("Added new server", config->m_guildID);
+	auto logMessage = std::make_unique<GuildEmbedMessage>("Added new server", config->m_guildID);
 	logMessage->user = event.command.usr;
 	logMessage->fields.emplace_back("Name", serverName);
 	logMessage->fields.emplace_back("Address", address);
-	m_bot.componentLog(logMessage);
+	m_bot.componentLog(std::move(logMessage));
 }
 
 void ServerStatusComponent::onRemoveServerCommand(const dpp::slashcommand_t& event)
@@ -480,9 +480,9 @@ void ServerStatusComponent::onRemoveServerSelect(const dpp::select_click_t& even
 	message += "```";
 
 	event.reply(dpp::message(message).set_flags(dpp::m_ephemeral));
-	auto logMessage = std::make_shared<GuildEmbedMessage>(message, guild);
+	auto logMessage = std::make_unique<GuildEmbedMessage>(message, guild);
 	logMessage->user = event.command.usr;
-	m_bot.componentLog(logMessage);
+	m_bot.componentLog(std::move(logMessage));
 }
 
 void ServerStatusComponent::onSelectServer(const dpp::select_click_t& event)
@@ -846,12 +846,12 @@ void ServerStatusComponent::onAddCustomServerButtonForm(const dpp::form_submit_t
 	updateServerStatusWidget(*config);
 
 	event.reply(dpp::message("Custom button added successfully!").set_flags(dpp::m_ephemeral));
-	auto logMessage = std::make_shared<GuildEmbedMessage>("Added new custom button", config->m_guildID);
+	auto logMessage = std::make_unique<GuildEmbedMessage>("Added new custom button", config->m_guildID);
 	logMessage->user = event.command.usr;
 	logMessage->fields.emplace_back("Server", server->m_name);
 	logMessage->fields.emplace_back("Label", buttonName);
 	logMessage->fields.emplace_back("Endpoint", endpoint);
-	m_bot.componentLog(logMessage);
+	m_bot.componentLog(std::move(logMessage));
 }
 
 void ServerStatusComponent::onRemoveCustomServerButtonButton(const dpp::button_click_t& event)
@@ -982,9 +982,9 @@ void ServerStatusComponent::onRemoveCustomServerButtonSelect(const dpp::select_c
 	message += "```";
 
 	event.reply(dpp::message(message).set_flags(dpp::m_ephemeral));
-	auto logMessage = std::make_shared<GuildEmbedMessage>(message, guild);
+	auto logMessage = std::make_unique<GuildEmbedMessage>(message, guild);
 	logMessage->user = event.command.usr;
-	m_bot.componentLog(logMessage);
+	m_bot.componentLog(std::move(logMessage));
 }
 
 void ServerStatusComponent::updateServerStatusWidget(const ServerConfig& config)
@@ -1129,7 +1129,7 @@ void ServerStatusComponent::onChannelDelete(const dpp::channel_delete_t& event)
 	}
 
 	ServerConfigs::erase(guild);
-	m_bot.componentLog(std::make_shared<GuildEmbedMessage>("Server status channel was deleted, removing saved server configurations!", guild));
+	m_bot.componentLog(std::make_unique<GuildEmbedMessage>("Server status channel was deleted, removing saved server configurations!", guild));
 }
 
 void ServerStatusComponent::onMessageDelete(const dpp::message_delete_t& event)
@@ -1151,6 +1151,6 @@ void ServerStatusComponent::onMessageDelete(const dpp::message_delete_t& event)
 	}
 
 	ServerConfigs::erase(guild);
-	m_bot.componentLog(std::make_shared<GuildEmbedMessage>("Server status widget was deleted, removing saved server configurations!", guild));
+	m_bot.componentLog(std::make_unique<GuildEmbedMessage>("Server status widget was deleted, removing saved server configurations!", guild));
 }
 

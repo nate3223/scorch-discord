@@ -24,8 +24,9 @@ void AgentsManager::listen(std::string port)
 	);
 }
 
-void AgentsManager::confirmPairing(std::string pairingCode, std::string info)
+std::shared_ptr<PairingCodeRequest> AgentsManager::confirmPairing(const std::string& pairingCode, std::string info)
 {
+	return m_p->m_pairingCodeManager.confirmPairing(pairingCode, std::move(info));
 }
 
 AgentsManagerPrivate::AgentsManagerPrivate(std::unique_ptr<IAgentIdentityStore> store)
@@ -59,6 +60,7 @@ AgentsManagerPrivate::AgentsManagerPrivate(std::unique_ptr<IAgentIdentityStore> 
 
 AgentsManagerPrivate::~AgentsManagerPrivate()
 {
+	m_workGuard.reset();
 	m_ioContext.stop();
 }
 

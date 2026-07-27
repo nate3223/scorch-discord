@@ -4,6 +4,7 @@
 #include <dpp/dpp.h>
 #include <functional>
 #include <string>
+#include <variant>
 #include <vector>
 
 enum class MatchType
@@ -12,35 +13,47 @@ enum class MatchType
 	PREFIX
 };
 
-typedef std::function<void(const dpp::slashcommand_t&)> SlashFunction;
 struct SlashCommand
 {
-	SlashFunction slashFunction;
-	dpp::slashcommand slashCommand;
+	using RegularHandler	= std::function<void(const dpp::slashcommand_t&)>;
+	using TaskHandler		= std::function<dpp::task<void>(const dpp::slashcommand_t&)>;
+	using Handler			= std::variant<RegularHandler, TaskHandler>;
+
+	Handler				handler;
+	dpp::slashcommand	slashCommand;
 };
 
-typedef std::function<void(const dpp::button_click_t&)> ButtonFunction;
 struct ButtonCommand
 {
-	std::string id;
-	ButtonFunction buttonFunction;
-	MatchType type = MatchType::EXACT;
+	using RegularHandler	= std::function<void(const dpp::button_click_t&)>;
+	using TaskHandler		= std::function<dpp::task<void>(const dpp::button_click_t&)>;
+	using Handler			= std::variant<RegularHandler, TaskHandler>;
+
+	std::string	id;
+	Handler		handler;
+	MatchType	type = MatchType::EXACT;
 };
 
-typedef std::function<void(const dpp::select_click_t&)> SelectFunction;
 struct SelectCommand
 {
-	std::string id;
-	SelectFunction selectFunction;
-	MatchType type = MatchType::EXACT;
+	using RegularHandler	= std::function<void(const dpp::select_click_t&)>;
+	using TaskHandler		= std::function<dpp::task<void>(const dpp::select_click_t&)>;
+	using Handler			= std::variant<RegularHandler, TaskHandler>;
+
+	std::string	id;
+	Handler		handler;
+	MatchType	type = MatchType::EXACT;
 };
 
-typedef std::function<void(const dpp::form_submit_t&)> FormFunction;
 struct FormCommand
 {
-	std::string id;
-	FormFunction formFunction;
-	MatchType type = MatchType::EXACT;
+	using RegularHandler	= std::function<void(const dpp::form_submit_t&)>;
+	using TaskHandler		= std::function<dpp::task<void>(const dpp::form_submit_t&)>;
+	using Handler			= std::variant<RegularHandler, TaskHandler>;
+
+	std::string	id;
+	Handler		handler;
+	MatchType	type = MatchType::EXACT;
 };
 
 class ComponentLogMessage
