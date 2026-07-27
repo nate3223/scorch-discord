@@ -74,6 +74,14 @@ namespace dpp
 		}
 	};
 
+	template <typename Awaitable>
+	class TaskAdapter
+	{
+	public:
+		template <typename ReturnType>
+		static dpp::task<ReturnType> Await(Awaitable awaitable);
+	};
+
 	template <typename ReturnValue, typename Executor>
 	class TaskAdapter<boost::asio::awaitable<ReturnValue, Executor>>
 	{
