@@ -22,8 +22,14 @@ FetchContent_Declare(
 	GIT_REPOSITORY https://github.com/nate3223/scorch-protocol.git
 	GIT_TAG main
 )
-
 FetchContent_MakeAvailable(ScorchProtocol)
+
+FetchContent_Declare(
+	ScorchServer
+	GIT_REPOSITORY https://github.com/nate3223/scorch-server.git
+	GIT_TAG main
+)
+FetchContent_MakeAvailable(ScorchServer)
 
 find_package(OpenSSL REQUIRED)
 find_package(dpp CONFIG REQUIRED)
@@ -41,10 +47,6 @@ find_package(Boost REQUIRED COMPONENTS asio)
 add_executable(${PROJECT_NAME}
 	src/main.cpp
 	src/Log.cpp
-
-	src/Agents/AgentConnection.cpp
-	src/Agents/AgentsManager.cpp
-	src/Agents/PairingCodeManager.cpp
 
 	src/DiscordBot/DiscordBot.cpp
 
@@ -79,7 +81,8 @@ target_link_libraries(${PROJECT_NAME} PRIVATE dpp::dpp)
 target_link_libraries(${PROJECT_NAME} PRIVATE unofficial-sodium::sodium)
 target_link_libraries(${PROJECT_NAME} PRIVATE
 	Boost::asio
-	Scorch::Protocol	
+	Scorch::Protocol
+	Scorch::Server
 )
 
 if(NOT TARGET spdlog)
@@ -92,7 +95,6 @@ add_compile_options(-Wall -Wextra -Wpedantic -Wpessimizing-move -Wredundant-move
 
 target_include_directories(${PROJECT_NAME} PRIVATE
 	src
-	src/Agents
 	src/Components
 	src/Components/Common
 	src/Components/Log

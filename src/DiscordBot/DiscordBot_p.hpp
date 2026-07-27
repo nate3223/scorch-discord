@@ -15,6 +15,7 @@
 #include <vector>
 
 namespace asio = boost::asio;
+using namespace scorch::server;
 
 class DiscordBot;
 
@@ -52,7 +53,7 @@ public:
 	std::vector<FormCommand>										m_formPrefixCommands;
 	boost::unordered_flat_map<dpp::snowflake, dpp::snowflake>		m_serverStatusChannel;
 
-	AgentsManager													m_agentsManager;
+	scorch::server::AgentsManager									m_agentsManager;
 
 	class ComponentLogger
 	{

@@ -5,12 +5,12 @@
 #include <mongocxx/pool-fwd.hpp>
 
 class MongoDBAgentIdentityStore
-	: public IAgentIdentityStore
+	: public scorch::server::IAgentIdentityStore
 {
 public:
 	MongoDBAgentIdentityStore();
 
-// IAgentIdentityStore i/f:
+// scorch::server::IAgentIdentityStore i/f:
 public:
 	bool	loadPublicKey(std::string_view uuid, std::vector<std::byte>& publicKey) override;
 	bool	savePublicKey(std::string_view uuid, std::span<const std::byte>& publicKey) override;

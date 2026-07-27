@@ -8,6 +8,14 @@ namespace dpp
 	class cluster;
 }
 
+namespace scorch
+{
+	namespace server
+	{
+		class AgentsManager;
+	}
+}
+
 class AgentsManager;
 class ComponentLogMessage;
 class DiscordBotPrivate;
@@ -21,7 +29,7 @@ public:
 	void			start();
 
 	void			componentLog(std::unique_ptr<ComponentLogMessage> message);
-	AgentsManager&	getAgentsManager();
+	scorch::server::AgentsManager&	getAgentsManager();
 
 	dpp::cluster& operator*() const;
 	dpp::cluster* operator->() const;

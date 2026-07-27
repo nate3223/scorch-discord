@@ -3,7 +3,14 @@
 #include "Component.hpp"
 
 class DiscordBot;
-class AgentsManager;
+
+namespace scorch
+{
+	namespace server
+	{
+		class AgentsManager;
+	}
+}
 
 class PairComponent
 	: public Component
@@ -14,5 +21,5 @@ public:
 private:
 	dpp::task<void>	onPairRequest(const dpp::slashcommand_t& event);
 
-	AgentsManager&	m_agentsManager;
+	scorch::server::AgentsManager&	m_agentsManager;
 };

@@ -12,6 +12,7 @@
 
 namespace
 {
+	using namespace scorch::server;
 	namespace PairRequest
 	{
 		constexpr auto PairCode = "pair-code";

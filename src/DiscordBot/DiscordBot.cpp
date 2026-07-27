@@ -19,9 +19,7 @@
 
 namespace
 {
-
 	constexpr auto kAgentsPort = "3224";
-
 }
 
 DiscordBot::DiscordBot(const std::string& token)
@@ -46,7 +44,7 @@ void DiscordBot::componentLog(std::unique_ptr<ComponentLogMessage> message)
 	m_p->componentLog(std::move(message));
 }
 
-AgentsManager& DiscordBot::getAgentsManager()
+scorch::server::AgentsManager& DiscordBot::getAgentsManager()
 {
 	return m_p->m_agentsManager;
 }
