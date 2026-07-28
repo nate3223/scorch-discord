@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Document.hpp"
+#include "Database/MongoDB/Document.hpp"
 
 #include <mongocxx/client.hpp>
 #include <shared_mutex>

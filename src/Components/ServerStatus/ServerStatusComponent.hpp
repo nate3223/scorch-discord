@@ -1,9 +1,9 @@
 #pragma once
 
-#include "Cache.hpp"
-#include "Component.hpp"
-#include "Document.hpp"
-#include "MongoDBManager.hpp"
+#include "Components/Common/Cache.hpp"
+#include "Components/Component.hpp"
+#include "Database/MongoDB/Document.hpp"
+#include "Database/MongoDB/MongoDBManager.hpp"
 #include "Server.hpp"
 #include "ServerConfig.hpp"
 
@@ -55,8 +55,8 @@ protected:
 	dpp::message	getServerStatusWidget(const ServerConfig& config);
 
 	// Component
-	void	onChannelDelete(const dpp::channel_delete_t& event) override;
-	void	onMessageDelete(const dpp::message_delete_t& event) override;
+	dpp::task<void>	onChannelDelete(const dpp::channel_delete_t& event) override;
+	dpp::task<void>	onMessageDelete(const dpp::message_delete_t& event) override;
 	// /Component
 
 private:

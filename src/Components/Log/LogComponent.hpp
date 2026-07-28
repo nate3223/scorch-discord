@@ -1,31 +1,25 @@
 #pragma once
 
-#include "Cache.hpp"
-#include "Component.hpp"
-#include "Document.hpp"
-#include "MongoDBManager.hpp"
-#include "LogConfig.hpp"
+#include "Components/Component.hpp"
 
-#include <boost/unordered/unordered_flat_map.hpp>
 #include <memory>
-#include <mutex>
 
-class LogConfig;
-
-class LogComponent
+class LogComponentPrivate;
+class LogComponent final
 	: public Component
 {
 public:
-	LogComponent(DiscordBot& bot);
-
-	void	onSetLogChannel(const dpp::slashcommand_t& event);
-
-	// Component
-	void	onChannelDelete(const dpp::channel_delete_t& event) override;
-	void	onComponentLog(const ComponentLogMessage* message) override;
-	// /Component
+	explicit	LogComponent(DiscordBot& bot);
+				~LogComponent();
 
 private:
-	mongocxx::pool&		m_databasePool;
-	Cache<LogConfig>	m_configs;
+	void		onSetLogChannel(const dpp::slashcommand_t& event);
+
+// Component i/f:
+public:
+	dpp::task<void>					onChannelDelete(const dpp::channel_delete_t& event) override;
+	boost::asio::awaitable<void>	onComponentLog(const ComponentLogMessage* message) override;
+
+private:
+	std::unique_ptr<LogComponentPrivate>	m_p;
 };

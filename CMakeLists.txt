@@ -4,8 +4,7 @@ if(DEFINED ENV{VCPKG_ROOT} AND NOT DEFINED CMAKE_TOOLCHAIN_FILE)
 	set(CMAKE_TOOLCHAIN_FILE "$ENV{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake" CACHE STRING "Vcpkg toolchain file")
 endif()
 
-# Project name, version and description
-project(Scorch VERSION 1.0 DESCRIPTION "Discord Game Server Manager")
+project(Scorch VERSION 1.0.0 DESCRIPTION "Discord Game Server Manager")
 
 # Enable Hot Reload for MSVC compilers if supported.
 if (POLICY CMP0141)
@@ -36,67 +35,99 @@ find_package(unofficial-sodium CONFIG REQUIRED)
 
 find_package(Boost REQUIRED COMPONENTS asio)
 
-# Create an executable
+if(NOT TARGET spdlog::spdlog)
+	find_package(spdlog REQUIRED)
+endif()
+
 add_executable(${PROJECT_NAME}
 	src/main.cpp
 	src/Log.cpp
+	src/Log.hpp
 
-	src/DiscordBot/DiscordBot.cpp
+	src/Agents/AgentIdentityStore.hpp
+	src/Agents/AgentsManager.cpp	
+	src/Agents/AgentsManager.hpp
+	src/Agents/AgentsManager_p.hpp	
+
+	src/Components/Component.hpp
+
+	src/Components/Common/Cache.hpp
+	src/Components/Common/StaticCache.hpp
 
 	src/Components/Log/LogComponent.cpp
+	src/Components/Log/LogComponent.hpp
+	src/Components/Log/LogComponent_p.hpp
 	src/Components/Log/LogConfig.cpp
+	src/Components/Log/LogConfig.hpp
 
 	src/Components/Pair/PairComponent.cpp
+	src/Components/Pair/PairComponent.hpp
 
 	src/Components/ServerStatus/Server.cpp
+	src/Components/ServerStatus/Server.hpp
 	src/Components/ServerStatus/ServerButton.cpp
+	src/Components/ServerStatus/ServerButton.hpp
 	src/Components/ServerStatus/ServerConfig.cpp
+	src/Components/ServerStatus/ServerConfig.hpp
 	src/Components/ServerStatus/ServerStatusComponent.cpp
+	src/Components/ServerStatus/ServerStatusComponent.hpp
 	src/Components/ServerStatus/StatusWidget.cpp
+	src/Components/ServerStatus/StatusWidget.hpp
 
 	src/Components/Yippee/YippeeComponent.cpp
+	src/Components/Yippee/YippeeComponent.hpp
 
 	src/Database/DatabaseManager.cpp
-	
+	src/Database/DatabaseManager.hpp
+
+	src/Database/MongoDB/Document.hpp
 	src/Database/MongoDB/MongoDBAgentIdentityStore.cpp
+	src/Database/MongoDB/MongoDBAgentIdentityStore.hpp
 	src/Database/MongoDB/MongoDBManager.cpp
+	src/Database/MongoDB/MongoDBManager.hpp
+
+	src/DiscordBot/DiscordBot.cpp
+	src/DiscordBot/DiscordBot.hpp
+	src/DiscordBot/DiscordBot_p.hpp
+
+	src/Task/ASIOTaskState.hpp
+	src/Task/ReadyTaskState.hpp
 )
 
-set_target_properties(${PROJECT_NAME} PROPERTIES
-	CXX_STANDARD 23
-	CXX_STANDARD_REQUIRED ON
+target_compile_features(${PROJECT_NAME}
+	PUBLIC
+		cxx_std_23
 )
 
-target_link_libraries(${PROJECT_NAME} PRIVATE $<IF:$<TARGET_EXISTS:mongo::bsoncxx_static>,mongo::bsoncxx_static,mongo::bsoncxx_shared>)
-target_link_libraries(${PROJECT_NAME} PRIVATE $<IF:$<TARGET_EXISTS:mongo::mongocxx_static>,mongo::mongocxx_static,mongo::mongocxx_shared>)
-target_link_libraries(${PROJECT_NAME} PRIVATE Opus::opus)
-target_link_libraries(${PROJECT_NAME} PRIVATE dpp::dpp)
-target_link_libraries(${PROJECT_NAME} PRIVATE unofficial-sodium::sodium)
-target_link_libraries(${PROJECT_NAME} PRIVATE
-	Boost::asio
-	Scorch::Protocol
-	Scorch::Server
+target_link_libraries(${PROJECT_NAME}
+	PRIVATE
+		Boost::asio
+		Scorch::Protocol
+		Scorch::Server
+		Opus::opus
+		dpp::dpp
+		unofficial-sodium::sodium
+		spdlog::spdlog
+		$<$<BOOL:${MINGW}>:ws2_32>
+		$<IF:$<TARGET_EXISTS:mongo::bsoncxx_static>,mongo::bsoncxx_static,mongo::bsoncxx_shared>
+		$<IF:$<TARGET_EXISTS:mongo::mongocxx_static>,mongo::mongocxx_static,mongo::mongocxx_shared>
 )
 
-if(NOT TARGET spdlog)
-	# Stand-alone build
-	find_package(spdlog REQUIRED)
-endif()
-target_link_libraries(${PROJECT_NAME} PRIVATE spdlog::spdlog $<$<BOOL:${MINGW}>:ws2_32>)
+target_compile_options(${PROJECT_NAME}
+	PRIVATE
+		$<$<CXX_COMPILER_ID:MSVC>:/W4>
+		$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:
+			-Wall
+			-Wextra
+			-Wpedantic
+			-Wpessimizing-move
+			-Wredundant-move
+		>
+)
 
-add_compile_options(-Wall -Wextra -Wpedantic -Wpessimizing-move -Wredundant-move)
-
-target_include_directories(${PROJECT_NAME} PRIVATE
-	src
-	src/Components
-	src/Components/Common
-	src/Components/Log
-	src/Components/Pair
-	src/Components/ServerStatus
-	src/Components/Yippee
-	src/DiscordBot
-	src/Database
-	src/Database/MongoDB
+target_include_directories(${PROJECT_NAME}
+	PRIVATE
+		src
 )
 
 set(SERVER_CERTS

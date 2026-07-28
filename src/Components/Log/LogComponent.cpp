@@ -1,4 +1,15 @@
 #include "LogComponent.hpp"
+#include "LogComponent_p.hpp"
+
+#include "Database/DatabaseManager.hpp"
+#include "Database/MongoDB/MongoDBManager.hpp"
+
+#include <boost/asio.hpp>
+#include <boost/asio/use_awaitable.hpp>
+
+#include <functional>
+#include <tuple>
+#include <type_traits>
 
 namespace
 {
@@ -8,9 +19,92 @@ namespace
 	}
 }
 
+template<typename T>
+struct function_traits;
+
+template<typename R, typename C, typename... Args>
+struct function_traits<R(C::*)(Args...)> {
+	using args_tuple = std::tuple<Args...>;
+	static constexpr std::size_t arity = sizeof...(Args);
+
+	template<std::size_t I>
+	using arg = std::tuple_element_t<I, args_tuple>;
+};
+
+template<typename R, typename C, typename... Args>
+struct function_traits<R(C::*)(Args...) const> {
+	using args_tuple = std::tuple<Args...>;
+	static constexpr std::size_t arity = sizeof...(Args);
+
+	template<std::size_t I>
+	using arg = std::tuple_element_t<I, args_tuple>;
+};
+
+// 2. Extract Callback type (last argument of target DPP function)
+template<typename Fn>
+using callback_type = std::decay_t<
+	typename function_traits<Fn>::template arg<function_traits<Fn>::arity - 1>
+>;
+
+// 3. Extract Result type from callback signature
+template<typename Callback>
+struct callback_traits;
+
+// Primary match for std::function<void(Arg0, ...)> or dpp::command_completion_event_t
+template<typename R, typename Arg0, typename... Rest>
+struct callback_traits<std::function<R(Arg0, Rest...)>> {
+	using result_type = std::decay_t<Arg0>;
+};
+
+template<typename R, typename Arg0, typename... Rest>
+struct callback_traits<R(*)(Arg0, Rest...)> {
+	using result_type = std::decay_t<Arg0>;
+};
+
+template<typename T>
+struct callback_traits {
+	using functor_sig = decltype(&T::operator());
+	using result_type = typename callback_traits<functor_sig>::result_type;
+};
+
+template<typename C, typename R, typename Arg0, typename... Rest>
+struct callback_traits<R(C::*)(Arg0, Rest...) const> {
+	using result_type = std::decay_t<Arg0>;
+};
+
+// 4. The Complete AwaitDpp Wrapper
+template<typename Fn, typename Obj, typename... Args>
+auto AwaitDpp(Fn fn, Obj* obj, Args&&... args)
+{
+	using Callback = callback_type<Fn>;
+	using Result = typename callback_traits<Callback>::result_type;
+
+	return boost::asio::async_initiate<
+		const boost::asio::use_awaitable_t<>&,
+		void(Result)
+	>(
+		[fn, obj, ... args = std::forward<Args>(args)](auto handler) mutable
+		{
+			// Wrap the move-only Asio handler in a shared_ptr to satisfy std::function's copy requirement
+			auto shared_handler = std::make_shared<decltype(handler)>(std::move(handler));
+
+			(obj->*fn)(
+				std::move(args)...,
+				[shared_handler](const auto& res) mutable
+				{
+					if (shared_handler) {
+						std::move(*shared_handler)(res);
+					}
+				}
+				);
+		},
+		boost::asio::use_awaitable
+	);
+}
+
 LogComponent::LogComponent(DiscordBot& bot)
 	: Component(bot)
-	, m_databasePool(DatabaseManager::GetInstance<MongoDBManager>()->getPool())
+	, m_p(std::make_unique<LogComponentPrivate>())
 {
 	m_slashCommands.emplace_back(
 		std::bind_front(&LogComponent::onSetLogChannel, this),
@@ -23,14 +117,16 @@ LogComponent::LogComponent(DiscordBot& bot)
 	);
 
 	{
-		auto client = m_databasePool.acquire();
+		auto client = m_p->m_databasePool.acquire();
 		for (auto& logConfig : LogConfig::FindAll(*client))
 		{
 			const auto guildID = logConfig->m_guildID;
-			m_configs.store(guildID, std::move(logConfig));
+			m_p->m_configs.store(guildID, std::move(logConfig));
 		}
 	}
 }
+
+LogComponent::~LogComponent() = default;
 
 void LogComponent::onSetLogChannel(const dpp::slashcommand_t& event)
 {
@@ -46,18 +142,18 @@ void LogComponent::onSetLogChannel(const dpp::slashcommand_t& event)
 		const auto guild = (uint64_t)event.command.guild_id;
 
 		LogConfig* config;
-		if (config = m_configs.find(guild); !config)
+		if (config = m_p->m_configs.find(guild); !config)
 		{
 			config = new LogConfig();
 			config->m_guildID = guild;
 			config->m_channelID = channel;
 
 			{
-				auto client = m_databasePool.acquire();
+				auto client = m_p->m_databasePool.acquire();
 				config->insertIntoDatabase(*client);
 			}
 
-			m_configs.store(guild, std::unique_ptr<LogConfig>(config));
+			m_p->m_configs.store(guild, std::unique_ptr<LogConfig>(config));
 		}
 		else
 		{
@@ -66,7 +162,7 @@ void LogComponent::onSetLogChannel(const dpp::slashcommand_t& event)
 			config->m_channelID = channel;
 
 			{
-				auto client = m_databasePool.acquire();
+				auto client = m_p->m_databasePool.acquire();
 				config->updateChannelID(*client);
 			}
 		}
@@ -80,35 +176,37 @@ void LogComponent::onSetLogChannel(const dpp::slashcommand_t& event)
 
 }
 
-void LogComponent::onChannelDelete(const dpp::channel_delete_t& event)
+dpp::task<void> LogComponent::onChannelDelete(const dpp::channel_delete_t& event)
 {
 	const auto guild = (uint64_t)event.deleted.guild_id;
 	const auto channel = (uint64_t)event.deleted.id;
 
 	LogConfig* config;
-	if (config = m_configs.find(guild); !config)
-		return;
+	if (config = m_p->m_configs.find(guild); !config)
+		co_return;
 
 	std::unique_lock lock(config->m_mutex);
 
 	if (config->m_channelID != channel)
-		return;
+		co_return;
 
 	{
-		auto client = m_databasePool.acquire();
+		auto client = m_p->m_databasePool.acquire();
 		config->removeFromDatabase(*client);
 	}
 
-	m_configs.erase(guild);
+	m_p->m_configs.erase(guild);
+
+	co_return;
 }
 
-void LogComponent::onComponentLog(const ComponentLogMessage* message)
+boost::asio::awaitable<void> LogComponent::onComponentLog(const ComponentLogMessage* message)
 {
 	if (const auto guildEmbedMessage = dynamic_cast<const GuildEmbedMessage*>(message); guildEmbedMessage != nullptr)
 	{
 		LogConfig* config;
-		if (config = m_configs.find((uint64_t)guildEmbedMessage->guildID); !config)
-			return;
+		if (config = m_p->m_configs.find((uint64_t)guildEmbedMessage->guildID); !config)
+			co_return;
 
 		std::shared_lock lock(config->m_mutex);
 
@@ -123,26 +221,26 @@ void LogComponent::onComponentLog(const ComponentLogMessage* message)
 			embed.set_footer(std::to_string((int64_t)guildEmbedMessage->user->id), "");
 		}
 
-		for (const auto& field : guildEmbedMessage->fields)
+		for (auto& field : guildEmbedMessage->fields)
 			embed.fields.push_back(std::move(field));
 
-		m_bot->message_create(dpp::message(config->m_channelID, std::move(embed)));
+		co_await AwaitDpp(&dpp::cluster::message_create, &(*m_bot), dpp::message(config->m_channelID, std::move(embed)));
 	}
 	else if (const auto guildMessage = dynamic_cast<const GuildMessage*>(message); guildMessage != nullptr)
 	{
 		LogConfig* config;
-		if (config = m_configs.find((uint64_t)guildMessage->guildID); !config)
-			return;
+		if (config = m_p->m_configs.find((uint64_t)guildMessage->guildID); !config)
+			co_return;
 
 		std::shared_lock lock(config->m_mutex);
 
 		dpp::message newMessage(guildMessage->message);
 		newMessage.set_channel_id(config->m_channelID);
-		m_bot->message_create(newMessage);
+		co_await AwaitDpp(&dpp::cluster::message_create, &(*m_bot), newMessage);
 	}
 	else if (const auto broadcastMessage = dynamic_cast<const BroadcastMessage*>(message); broadcastMessage != nullptr)
 	{
-		for (auto it = m_configs.begin(); it != m_configs.end(); it++)
+		for (auto it = m_p->m_configs.begin(); it != m_p->m_configs.end(); it++)
 		{
 			const auto guild = it->first;
 			dpp::message newMessage(broadcastMessage->message);
@@ -152,4 +250,8 @@ void LogComponent::onComponentLog(const ComponentLogMessage* message)
 	}
 }
 
+LogComponentPrivate::LogComponentPrivate()
+	: m_databasePool(DatabaseManager::GetInstance<MongoDBManager>()->getPool())
+{
 
+}

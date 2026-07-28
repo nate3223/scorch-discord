@@ -1,10 +1,9 @@
 build/
 certs/
-vcpkg_installed/
+
 .env
 .idea
 cmake*/
-.vs/
 CMakeUserPresets.json
 
 # Prerequisites
@@ -43,3 +42,8 @@ CMakeUserPresets.json
 # certs
 *.crt
 *.key
+
+# visual studio
+vcpkg_installed/
+.vs/
+*.code-workspace

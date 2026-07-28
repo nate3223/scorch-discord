@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Component.hpp"
+#include "Components/Component.hpp"
 
 class YippeeComponent
 	: public Component

@@ -1109,19 +1109,19 @@ dpp::message ServerStatusComponent::getServerStatusWidget(const ServerConfig& co
 	return message;
 }
 
-void ServerStatusComponent::onChannelDelete(const dpp::channel_delete_t& event)
+dpp::task<void> ServerStatusComponent::onChannelDelete(const dpp::channel_delete_t& event)
 {
 	const auto guild = (uint64_t)event.deleted.guild_id;
 	const auto channel = (uint64_t)event.deleted.id;
 	
 	ServerConfig* config;
 	if (config = ServerConfigs::find(guild); !config)
-		return;
+		co_return;
 
 	std::unique_lock lock(config->m_mutex);
 
 	if (config->m_channelID != channel)
-		return;
+		co_return;
 
 	{
 		auto client = m_databasePool.acquire();
@@ -1132,18 +1132,18 @@ void ServerStatusComponent::onChannelDelete(const dpp::channel_delete_t& event)
 	m_bot.componentLog(std::make_unique<GuildEmbedMessage>("Server status channel was deleted, removing saved server configurations!", guild));
 }
 
-void ServerStatusComponent::onMessageDelete(const dpp::message_delete_t& event)
+dpp::task<void> ServerStatusComponent::onMessageDelete(const dpp::message_delete_t& event)
 {
 	const auto guild = (uint64_t)event.guild_id;
 
 	ServerConfig* config;
 	if (config = ServerConfigs::find(guild); !config)
-		return;
+		co_return;
 
 	std::unique_lock lock(config->m_mutex);
 
 	if (event.channel_id != (int64_t)config->m_channelID || event.id != (int64_t)*config->m_statusWidget.m_messageID || config->m_statusWidget.m_commandID.has_value())
-		return;
+		co_return;
 
 	{
 		auto client = m_databasePool.acquire();

@@ -2,25 +2,22 @@
 #include "DiscordBot_p.hpp"
 
 #include "Log.hpp"
-#include "LogComponent.hpp"
-#include "PairComponent.hpp"
-#include "ServerStatusComponent.hpp"
-#include "YippeeComponent.hpp"
+#include "Components/Log/LogComponent.hpp"
+#include "Components/Pair/PairComponent.hpp"
+#include "Components/ServerStatus/ServerStatusComponent.hpp"
+#include "Components/Yippee/YippeeComponent.hpp"
 
-#include "MongoDBManager.hpp"
-#include "MongoDBAgentIdentityStore.hpp"
+#include "Database/MongoDB/MongoDBManager.hpp"
+#include "Database/MongoDB/MongoDBAgentIdentityStore.hpp"
 
-#include <boost/asio/post.hpp>
+#include <boost/asio/awaitable.hpp>
+#include <boost/asio/co_spawn.hpp>
+#include <boost/asio/detached.hpp>
 
 #include <algorithm>
 #include <format>
 #include <ranges>
 #include <thread>
-
-namespace
-{
-	constexpr auto kAgentsPort = "3224";
-}
 
 DiscordBot::DiscordBot(const std::string& token)
 {
@@ -44,11 +41,6 @@ void DiscordBot::componentLog(std::unique_ptr<ComponentLogMessage> message)
 	m_p->componentLog(std::move(message));
 }
 
-scorch::server::Server& DiscordBot::getScorchServer()
-{
-	return m_p->m_scorchServer;
-}
-
 dpp::cluster& DiscordBot::operator*() const
 {
 	return *m_p->m_bot;
@@ -61,7 +53,6 @@ dpp::cluster* DiscordBot::operator->() const
 
 DiscordBotPrivate::DiscordBotPrivate(DiscordBot& owner, const std::string& token)
 	: m_owner(owner)
-	, m_scorchServer(std::make_unique<MongoDBAgentIdentityStore>())
 	, m_componentLogger(m_components)
 {
 	m_bot = std::make_unique<dpp::cluster>(token, dpp::i_all_intents);
@@ -82,8 +73,6 @@ void DiscordBotPrivate::init()
 	addComponent<PairComponent>();
 	addComponent<YippeeComponent>();
 	addComponent<ServerStatusComponent>();
-
-	m_scorchServer.start(::kAgentsPort);
 }
 
 template <typename T, typename... Args>
@@ -327,16 +316,16 @@ dpp::task<void> DiscordBotPrivate::onFormSubmit(const dpp::form_submit_t& event)
 		m_bot->log(dpp::loglevel::ll_error, std::format("Unknown form command '{}'!", formID));
 }
 
-void DiscordBotPrivate::onChannelDelete(const dpp::channel_delete_t& event)
+dpp::task<void> DiscordBotPrivate::onChannelDelete(const dpp::channel_delete_t& event)
 {
 	for (auto& component : m_components)
-		component->onChannelDelete(event);
+		co_await component->onChannelDelete(event);
 }
 
-void DiscordBotPrivate::onMessageDelete(const dpp::message_delete_t& event)
+dpp::task<void> DiscordBotPrivate::onMessageDelete(const dpp::message_delete_t& event)
 {
 	for (auto& component : m_components)
-		component->onMessageDelete(event);
+		co_await component->onMessageDelete(event);
 }
 
 DiscordBotPrivate::ComponentLogger::ComponentLogger(std::vector<std::unique_ptr<Component>>& components)
@@ -357,8 +346,12 @@ DiscordBotPrivate::ComponentLogger::~ComponentLogger()
 
 void DiscordBotPrivate::ComponentLogger::log(std::unique_ptr<ComponentLogMessage> message)
 {
-	asio::post(m_ioContext, [this, message = std::move(message)]() mutable {
-		for (const auto& component : m_components)
-			component->onComponentLog(message.get());
-	});
+	boost::asio::co_spawn(
+		m_ioContext,
+		[this, message = std::move(message)]() -> boost::asio::awaitable<void> {
+			for (const auto& component : m_components)
+				co_await component->onComponentLog(message.get());
+		},
+		boost::asio::detached
+	);
 }

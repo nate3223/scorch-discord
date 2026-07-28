@@ -1,14 +1,20 @@
 #pragma once
 
-#include <scorch/server/IAgentIdentityStore.hpp>
+#include "Agents/AgentIdentityStore.hpp"
 
 #include <mongocxx/pool-fwd.hpp>
 
-class MongoDBAgentIdentityStore
-	: public scorch::server::IAgentIdentityStore
+class MongoDBAgentIdentityStore final
+	: public AgentIdentityStore
 {
 public:
 	MongoDBAgentIdentityStore();
+
+// AgentIdentityStore i/f:
+public:
+	bool	loadAgentGUID(std::string_view uuid, std::string& guid) override;
+	bool	loadAgentFromGUID(std::string_view guid, std::string& uuid) override;
+	bool	saveAgentGUID(std::string_view uuid, std::string_view guid) override;
 
 // scorch::server::IAgentIdentityStore i/f:
 public:

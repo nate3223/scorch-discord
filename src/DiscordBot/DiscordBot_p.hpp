@@ -1,8 +1,6 @@
 #pragma once
 
-#include "Component.hpp"
-
-#include <scorch/server/Server.hpp>
+#include "Components/Component.hpp"
 
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/executor_work_guard.hpp>
@@ -38,8 +36,8 @@ public:
 	dpp::task<void>	onButtonClick(const dpp::button_click_t& event);
 	dpp::task<void>	onSelectClick(const dpp::select_click_t& event);
 	dpp::task<void>	onFormSubmit(const dpp::form_submit_t& event);
-	void			onChannelDelete(const dpp::channel_delete_t& event);
-	void			onMessageDelete(const dpp::message_delete_t& event);
+	dpp::task<void>	onChannelDelete(const dpp::channel_delete_t& event);
+	dpp::task<void>	onMessageDelete(const dpp::message_delete_t& event);
 
 	DiscordBot&														m_owner;
 	std::atomic_bool												m_running{ false };
@@ -53,8 +51,6 @@ public:
 	boost::unordered_flat_map<std::string, FormCommand::Handler>	m_formCommands;
 	std::vector<FormCommand>										m_formPrefixCommands;
 	boost::unordered_flat_map<dpp::snowflake, dpp::snowflake>		m_serverStatusChannel;
-
-	scorch::server::Server											m_scorchServer;
 
 	class ComponentLogger
 	{

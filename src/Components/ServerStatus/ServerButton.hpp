@@ -1,7 +1,7 @@
 #pragma once
 
-#include "Document.hpp"
-#include "StaticCache.hpp"
+#include "Database/MongoDB/Document.hpp"
+#include "Components/Common/StaticCache.hpp"
 
 #include <regex>
 #include <string>

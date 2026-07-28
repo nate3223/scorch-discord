@@ -1,4 +1,4 @@
-#include "DiscordBot.hpp"
+#include "DiscordBot/DiscordBot.hpp"
 
 #include <cstdlib>
 #include <stdio.h>

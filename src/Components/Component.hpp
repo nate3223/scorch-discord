@@ -1,5 +1,7 @@
 #pragma once
 
+#include <boost/asio/awaitable.hpp>
+
 #include <algorithm>
 #include <dpp/dpp.h>
 #include <functional>
@@ -104,9 +106,9 @@ public:
 	std::vector<SelectCommand>	getSelectCommands()	{ return m_selectCommands; }
 	std::vector<FormCommand>	getFormCommands()	{ return m_formCommands; }
 
-	virtual void				onChannelDelete(const dpp::channel_delete_t& event)	{}
-	virtual void				onMessageDelete(const dpp::message_delete_t& event) {}
-	virtual void				onComponentLog(const ComponentLogMessage* message) {}
+	virtual dpp::task<void>					onChannelDelete(const dpp::channel_delete_t& event) { co_return; }
+	virtual dpp::task<void>					onMessageDelete(const dpp::message_delete_t& event) { co_return; }
+	virtual boost::asio::awaitable<void>	onComponentLog(const ComponentLogMessage* message) { co_return; }
 
 protected:
 	DiscordBot&					m_bot;
@@ -116,4 +118,4 @@ protected:
 	std::vector<FormCommand>	m_formCommands;
 };
 
-#include "DiscordBot.hpp"
+#include "DiscordBot/DiscordBot.hpp"

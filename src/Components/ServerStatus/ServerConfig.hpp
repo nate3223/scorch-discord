@@ -1,8 +1,8 @@
 #pragma once
 
-#include "Document.hpp"
+#include "Database/MongoDB/Document.hpp"
 #include "Server.hpp"
-#include "StaticCache.hpp"
+#include "Components/Common/StaticCache.hpp"
 #include "StatusWidget.hpp"
 
 #include <memory>

@@ -1,16 +1,9 @@
 #pragma once
 
-#include "Component.hpp"
+#include "Components/Component.hpp"
 
 class DiscordBot;
-
-namespace scorch
-{
-	namespace server
-	{
-		class AgentsManager;
-	}
-}
+class AgentsManager;
 
 class PairComponent
 	: public Component
@@ -21,5 +14,5 @@ public:
 private:
 	dpp::task<void>	onPairRequest(const dpp::slashcommand_t& event);
 
-	scorch::server::Server&	m_scorchServer;
+	AgentsManager&	m_agentsManager;
 };
