@@ -1,13 +1,15 @@
 #pragma once
 
-#include "AgentsManager.hpp"
 #include "Component.hpp"
 
-#include <atomic>
+#include <scorch/server/Server.hpp>
+
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/executor_work_guard.hpp>
 #include <boost/unordered/unordered_flat_map.hpp>
+
 #include <dpp/dpp.h>
+#include <atomic>
 #include <memory>
 #include <string>
 #include <thread>
@@ -15,7 +17,6 @@
 #include <vector>
 
 namespace asio = boost::asio;
-using namespace scorch::server;
 
 class DiscordBot;
 
@@ -53,7 +54,7 @@ public:
 	std::vector<FormCommand>										m_formPrefixCommands;
 	boost::unordered_flat_map<dpp::snowflake, dpp::snowflake>		m_serverStatusChannel;
 
-	scorch::server::AgentsManager									m_agentsManager;
+	scorch::server::Server											m_scorchServer;
 
 	class ComponentLogger
 	{

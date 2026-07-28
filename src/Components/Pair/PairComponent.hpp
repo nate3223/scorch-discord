@@ -21,5 +21,5 @@ public:
 private:
 	dpp::task<void>	onPairRequest(const dpp::slashcommand_t& event);
 
-	scorch::server::AgentsManager&	m_agentsManager;
+	scorch::server::Server&	m_scorchServer;
 };

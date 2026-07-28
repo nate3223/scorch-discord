@@ -1,9 +1,9 @@
 #include "PairComponent.hpp"
 
-#include "AgentsManager.hpp"
 #include "DiscordBot.hpp"
-#include "PairingCodeRequest.hpp"
-#include "TaskAdapter.hpp"
+
+#include <scorch/server/PairingCodeRequest.hpp>
+#include <scorch/server/Server.hpp>
 
 #include <dpp/unicode_emoji.h>
 
@@ -12,7 +12,6 @@
 
 namespace
 {
-	using namespace scorch::server;
 	namespace PairRequest
 	{
 		constexpr auto PairCode = "pair-code";
@@ -21,7 +20,7 @@ namespace
 
 PairComponent::PairComponent(DiscordBot& bot)
 	: Component(bot)
-	, m_agentsManager(bot.getAgentsManager())
+	, m_scorchServer(bot.getScorchServer())
 {
 	m_slashCommands.emplace_back(
 		SlashCommand::TaskHandler{[this](const dpp::slashcommand_t& event) -> dpp::task<void> { co_await onPairRequest(event); }},
@@ -39,35 +38,37 @@ dpp::task<void> PairComponent::onPairRequest(const dpp::slashcommand_t& event)
 	const auto& user = event.command.usr;
 	const dpp::snowflake& guildId = event.command.guild_id;
 	
-	std::shared_ptr<PairingCodeRequest> pairingCodeRequest = m_agentsManager.confirmPairing(
+	using PairingCodeRequest = scorch::server::PairingCodeRequest;
+	using PairingCodeState = scorch::server::PairingCodeState;
+
+	std::shared_ptr<PairingCodeRequest> pairingCodeRequest = m_scorchServer.confirmPairing(
 		pairCode,
 		std::format("User {} ({}) in guild {}", user.username, user.id.str(), guildId.str())
 	);
 	if (pairingCodeRequest)
 	{
-		dpp::message msg(std::format("Waiting for Agent {} to approve pairing...", pairingCodeRequest->agentUUID));
+		const auto agentUUID = pairingCodeRequest->uuid();
+
+		dpp::message msg(std::format("Waiting for Agent {} to approve pairing...", agentUUID));
 		msg.set_flags(dpp::m_ephemeral);
 		auto waitingMsg = event.co_reply(msg);
 
-		auto pairingResult = co_await dpp::TaskAdapter<boost::asio::awaitable<PairingCodeResult>>::Await(
-			pairingCodeRequest->waitUntil(std::chrono::minutes(5)),
-			pairingCodeRequest->timer.get_executor()
-		);
+		auto pairingResult = co_await pairingCodeRequest->waitUntil(std::chrono::minutes(5));
 
 		co_await waitingMsg;
 
-		if (pairingResult == PairingCodeResult::Timeout)
+		if (pairingResult == PairingCodeState::Timeout)
 		{
-			co_await event.co_edit_original_response(dpp::message(std::format("{} Pairing with Agent `{}` **Timed out**!", dpp::unicode_emoji::hourglass, pairingCodeRequest->agentUUID)));
+			co_await event.co_edit_original_response(dpp::message(std::format("{} Pairing with Agent `{}` **Timed out**!", dpp::unicode_emoji::hourglass, agentUUID)));
 			co_return;
 		}
-		else if (pairingResult != PairingCodeResult::Approved)
+		else if (pairingResult != PairingCodeState::Approved)
 		{
-			co_await event.co_edit_original_response(dpp::message(std::format("{} Pairing with Agent `{}` **Rejected**!", dpp::unicode_emoji::x, pairingCodeRequest->agentUUID)));
+			co_await event.co_edit_original_response(dpp::message(std::format("{} Pairing with Agent `{}` **Rejected**!", dpp::unicode_emoji::x, agentUUID)));
 			co_return;
 		}
 
-		auto reply = std::format("{} Pairing with Agent `{}` **Approved**!", dpp::unicode_emoji::white_check_mark, pairingCodeRequest->agentUUID);
+		auto reply = std::format("{} Pairing with Agent `{}` **Approved**!", dpp::unicode_emoji::white_check_mark, agentUUID);
 
 		auto response = event.co_edit_original_response(dpp::message(reply));
 		auto logMessage = std::make_unique<GuildEmbedMessage>(reply, guildId);

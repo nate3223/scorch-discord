@@ -18,13 +18,6 @@ endif()
 include(FetchContent)
 
 FetchContent_Declare(
-	ScorchProtocol
-	GIT_REPOSITORY https://github.com/nate3223/scorch-protocol.git
-	GIT_TAG main
-)
-FetchContent_MakeAvailable(ScorchProtocol)
-
-FetchContent_Declare(
 	ScorchServer
 	GIT_REPOSITORY https://github.com/nate3223/scorch-server.git
 	GIT_TAG main
@@ -104,7 +97,6 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 	src/DiscordBot
 	src/Database
 	src/Database/MongoDB
-	src/DPP
 )
 
 set(SERVER_CERTS

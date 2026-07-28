@@ -44,9 +44,9 @@ void DiscordBot::componentLog(std::unique_ptr<ComponentLogMessage> message)
 	m_p->componentLog(std::move(message));
 }
 
-scorch::server::AgentsManager& DiscordBot::getAgentsManager()
+scorch::server::Server& DiscordBot::getScorchServer()
 {
-	return m_p->m_agentsManager;
+	return m_p->m_scorchServer;
 }
 
 dpp::cluster& DiscordBot::operator*() const
@@ -61,7 +61,7 @@ dpp::cluster* DiscordBot::operator->() const
 
 DiscordBotPrivate::DiscordBotPrivate(DiscordBot& owner, const std::string& token)
 	: m_owner(owner)
-	, m_agentsManager(std::make_unique<MongoDBAgentIdentityStore>())
+	, m_scorchServer(std::make_unique<MongoDBAgentIdentityStore>())
 	, m_componentLogger(m_components)
 {
 	m_bot = std::make_unique<dpp::cluster>(token, dpp::i_all_intents);
@@ -83,7 +83,7 @@ void DiscordBotPrivate::init()
 	addComponent<YippeeComponent>();
 	addComponent<ServerStatusComponent>();
 
-	m_agentsManager.listen(::kAgentsPort);
+	m_scorchServer.start(::kAgentsPort);
 }
 
 template <typename T, typename... Args>

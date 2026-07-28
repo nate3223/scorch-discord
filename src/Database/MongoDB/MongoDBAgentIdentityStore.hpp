@@ -1,6 +1,6 @@
 #pragma once
 
-#include "IAgentIdentityStore.hpp"
+#include <scorch/server/IAgentIdentityStore.hpp>
 
 #include <mongocxx/pool-fwd.hpp>
 

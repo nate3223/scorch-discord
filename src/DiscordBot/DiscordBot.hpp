@@ -12,7 +12,7 @@ namespace scorch
 {
 	namespace server
 	{
-		class AgentsManager;
+		class Server;
 	}
 }
 
@@ -29,7 +29,7 @@ public:
 	void			start();
 
 	void			componentLog(std::unique_ptr<ComponentLogMessage> message);
-	scorch::server::AgentsManager&	getAgentsManager();
+	scorch::server::Server&	getScorchServer();
 
 	dpp::cluster& operator*() const;
 	dpp::cluster* operator->() const;
