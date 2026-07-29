@@ -55,6 +55,7 @@ public:
 
 	scorch::server::Task<scorch::server::Agent>			findAgent(std::string_view guildId) const;
 	scorch::server::Agent								connectedAgent(std::string_view guildId) const;
+	scorch::server::Agent								connectedAgentByUUID(std::string_view uuid) const;
 	AgentStatusSubscription								subscribeToAgentStatus(AgentStatusCallback callback);
 
 private:

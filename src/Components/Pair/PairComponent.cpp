@@ -82,9 +82,74 @@ dpp::task<void> PairComponent::onPairRequest(const dpp::slashcommand_t& event)
 	if (! pairingCodeRequest)
 	{
 		auto sharedAgentUUID = m_p->consumeShareCode(pairCode);
-		if (! sharedAgentUUID || ! m_p->m_agentsManager.saveAgentGuildId(*sharedAgentUUID, guildId.str()))
+		if (! sharedAgentUUID)
 		{
 			event.reply(dpp::message("Invalid or expired pairing code.").set_flags(dpp::m_ephemeral));
+			co_return;
+		}
+
+		auto agent = m_p->m_agentsManager.connectedAgentByUUID(*sharedAgentUUID);
+		if (! agent)
+		{
+			event.reply(dpp::message("The agent is not connected.").set_flags(dpp::m_ephemeral));
+			co_return;
+		}
+
+		auto waiting = event.co_reply(
+			dpp::message(std::format(
+				"Waiting for Agent `{}` to approve sharing...",
+				*sharedAgentUUID
+			)).set_flags(dpp::m_ephemeral)
+		);
+
+		bool approved = false;
+		std::string shareError;
+		try
+		{
+			approved = co_await agent.requestShare(std::format(
+				"User {} ({}) requested access from Discord server {}",
+				user.username,
+				user.id.str(),
+				guildId.str()
+			));
+		}
+		catch (const std::exception& error)
+		{
+			shareError = error.what();
+			Logger::App().warn(
+				"Agent {} share request failed for Discord server {}: {}",
+				*sharedAgentUUID,
+				guildId,
+				shareError
+			);
+		}
+
+		co_await waiting;
+		if (! shareError.empty())
+		{
+			co_await event.co_edit_original_response(
+				dpp::message("The agent could not complete the share request.")
+			);
+			co_return;
+		}
+
+		if (! approved)
+		{
+			co_await event.co_edit_original_response(
+				dpp::message(std::format(
+					"{} Agent `{}` rejected sharing.",
+					dpp::unicode_emoji::x,
+					*sharedAgentUUID
+				))
+			);
+			co_return;
+		}
+
+		if (! m_p->m_agentsManager.saveAgentGuildId(*sharedAgentUUID, guildId.str()))
+		{
+			co_await event.co_edit_original_response(
+				dpp::message("The approved agent association could not be saved.")
+			);
 			co_return;
 		}
 
@@ -93,7 +158,7 @@ dpp::task<void> PairComponent::onPairRequest(const dpp::slashcommand_t& event)
 			dpp::unicode_emoji::white_check_mark,
 			*sharedAgentUUID
 		);
-		event.reply(dpp::message(reply).set_flags(dpp::m_ephemeral));
+		co_await event.co_edit_original_response(dpp::message(reply));
 
 		auto logMessage = std::make_unique<GuildEmbedMessage>(reply, guildId);
 		logMessage->user = user;

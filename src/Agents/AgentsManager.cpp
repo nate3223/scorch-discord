@@ -103,6 +103,21 @@ scorch::server::Agent AgentsManager::connectedAgent(std::string_view guildId) co
 	return {};
 }
 
+scorch::server::Agent AgentsManager::connectedAgentByUUID(std::string_view uuid) const
+{
+	std::shared_lock lock(m_p->m_agentsMutex);
+	const auto agent = std::ranges::find_if(
+		m_p->m_connectedAgents,
+		[uuid](const auto& entry) {
+			return entry.second.uuid() == uuid;
+		}
+	);
+
+	return agent != m_p->m_connectedAgents.end()
+		? agent->second
+		: scorch::server::Agent{};
+}
+
 AgentStatusSubscription AgentsManager::subscribeToAgentStatus(AgentStatusCallback callback)
 {
 	std::scoped_lock lock(m_p->m_subscribersMutex);
