@@ -12,7 +12,7 @@ public:
 
 // AgentIdentityStore i/f:
 public:
-	bool	loadAgentGuildId(std::string_view uuid, std::string& guildId) override;
+	bool	loadAgentGuildIds(std::string_view uuid, std::vector<std::string>& guildIds) override;
 	bool	loadAgentFromGuildId(std::string_view guildId, std::string& uuid) override;
 	bool	saveAgentGuildId(std::string_view uuid, std::string_view guildId) override;
 

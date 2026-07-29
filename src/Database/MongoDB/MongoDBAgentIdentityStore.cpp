@@ -14,7 +14,7 @@ namespace
 		constexpr char Collection[] = "AgentIdentities";
 		constexpr char UUID[]		= "uuid";
 		constexpr char PublicKey[]	= "publicKey";
-		constexpr char GuildId[]	= "guildId";
+		constexpr char GuildIds[]	= "guildIds";
 	}
 }
 
@@ -33,19 +33,21 @@ MongoDBAgentIdentityStore::MongoDBAgentIdentityStore()
 
 	collection.create_index(
 		make_document(
-			kvp(Database::GuildId, 1)
+			kvp(Database::GuildIds, 1)
 		),
 		mongocxx::options::index{}
+			.unique(true)
+			.sparse(true)
 	);
 }
 
-bool MongoDBAgentIdentityStore::loadAgentGuildId(std::string_view uuid, std::string& guildId)
+bool MongoDBAgentIdentityStore::loadAgentGuildIds(std::string_view uuid, std::vector<std::string>& guildIds)
 {
 	auto client = m_pool.acquire();
 	auto collection = client->database(MongoDB::DATABASE_NAME)[Database::Collection];
 
 	static const auto kProjection = make_document(
-		kvp(Database::GuildId, 1),
+		kvp(Database::GuildIds, 1),
 		kvp("_id", 0)
 	);
 
@@ -63,19 +65,25 @@ bool MongoDBAgentIdentityStore::loadAgentGuildId(std::string_view uuid, std::str
 			return false;
 
 		auto view = result->view();
-		auto elem = view[Database::GuildId];
+		auto elem = view[Database::GuildIds];
 
-		if (! elem || elem.type() != bsoncxx::type::k_string)
+		if (! elem || elem.type() != bsoncxx::type::k_array)
 			return false;
 
-		guildId = std::string(elem.get_string().value);
+		guildIds.clear();
+		for (const auto guildId : elem.get_array().value)
+		{
+			if (guildId.type() != bsoncxx::type::k_string)
+				return false;
+			guildIds.emplace_back(guildId.get_string().value);
+		}
 	}
 	catch (const std::exception& e)
 	{
 		return false;
 	}
 
-	return true;
+	return ! guildIds.empty();
 }
 
 bool MongoDBAgentIdentityStore::loadAgentFromGuildId(std::string_view guildId, std::string& uuid)
@@ -92,7 +100,7 @@ bool MongoDBAgentIdentityStore::loadAgentFromGuildId(std::string_view guildId, s
 	options.projection(kProjection.view());
 
 	auto filter = make_document(
-		kvp(Database::GuildId, guildId)
+		kvp(Database::GuildIds, guildId)
 	);
 
 	try
@@ -122,24 +130,20 @@ bool MongoDBAgentIdentityStore::saveAgentGuildId(std::string_view uuid, std::str
 	auto client = m_pool.acquire();
 	auto collection = client->database(MongoDB::DATABASE_NAME)[Database::Collection];
 
-	// Agent exists, but doesn't have a guild ID assigned
 	auto filter = make_document(
-		kvp(Database::UUID, uuid),
-		kvp(Database::GuildId, make_document(
-			kvp("$exists", false)
-		))
+		kvp(Database::UUID, uuid)
 	);
 
 	auto updateGuildId = make_document(
-		kvp("$set", make_document(
-			kvp(Database::GuildId, guildId)
+		kvp("$addToSet", make_document(
+			kvp(Database::GuildIds, guildId)
 		))
 	);
 
 	try
 	{
 		auto result = collection.update_one(filter.view(), updateGuildId.view());
-		return result && result->modified_count() > 0;
+		return result && result->matched_count() > 0;
 	}
 	catch (const std::exception&)
 	{

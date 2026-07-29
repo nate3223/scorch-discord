@@ -60,7 +60,29 @@ std::shared_ptr<scorch::server::PairingCodeRequest>	AgentsManager::confirmPairin
 
 bool AgentsManager::saveAgentGuildId(std::string_view uuid, std::string_view guildId)
 {
-	return m_p->m_store.saveAgentGuildId(uuid, guildId);
+	if (! m_p->m_store.saveAgentGuildId(uuid, guildId))
+		return false;
+
+	scorch::server::Agent connectedAgent;
+	{
+		std::unique_lock lock(m_p->m_agentsMutex);
+		const auto existing = std::ranges::find_if(
+			m_p->m_connectedAgents,
+			[uuid](const auto& entry) {
+				return entry.second.uuid() == uuid;
+			}
+		);
+		if (existing != m_p->m_connectedAgents.end())
+		{
+			connectedAgent = existing->second;
+			m_p->m_connectedAgents.insert_or_assign(std::string(guildId), connectedAgent);
+		}
+	}
+
+	if (connectedAgent)
+		m_p->notifyAgentStatus(guildId, connectedAgent);
+
+	return true;
 }
 
 scorch::server::Task<scorch::server::Agent> AgentsManager::findAgent(std::string_view guildId) const
@@ -114,43 +136,49 @@ AgentsManagerPrivate::AgentsManagerPrivate()
 
 void AgentsManagerPrivate::onAgentConnected(scorch::server::Agent agent)
 {
-	std::string guildId;
-	std::string uuid = agent.uuid();
-	const bool success = m_store.loadAgentGuildId(uuid, guildId);
-	if (success)
+	std::vector<std::string> guildIds;
+	const std::string uuid = agent.uuid();
+	if (! m_store.loadAgentGuildIds(uuid, guildIds))
 	{
-		{
-			std::unique_lock lock(m_agentsMutex);
-			m_connectedAgents.erase(guildId);
-			m_connectedAgents.emplace(guildId, agent);
-		}
-		m_logger.info("Agent {} connected (guild ID: {})", uuid, guildId);
-		notifyAgentStatus(guildId, agent);
+		m_logger.error("Agent {} does not have any valid guild IDs", uuid);
+		return;
 	}
-	else
-		m_logger.error("Agent {} does not have a valid guild ID", uuid);
+
+	{
+		std::unique_lock lock(m_agentsMutex);
+		for (const auto& guildId : guildIds)
+			m_connectedAgents.insert_or_assign(guildId, agent);
+	}
+
+	m_logger.info("Agent {} connected to {} guilds", uuid, guildIds.size());
+	for (const auto& guildId : guildIds)
+		notifyAgentStatus(guildId, agent);
 }
 
 void AgentsManagerPrivate::onAgentDisconnected(scorch::server::Agent agent)
 {
-	std::string guildId;
+	std::vector<std::string> guildIds;
 	const std::string uuid = agent.uuid();
-	if (! m_store.loadAgentGuildId(uuid, guildId))
+	if (! m_store.loadAgentGuildIds(uuid, guildIds))
 		return;
 
-	bool cacheChanged = false;
+	std::vector<std::string> changedGuildIds;
+	changedGuildIds.reserve(guildIds.size());
 	{
 		std::unique_lock lock(m_agentsMutex);
-		if (const auto it = m_connectedAgents.find(guildId);
-			it != m_connectedAgents.end() && it->second.uuid() == uuid)
+		for (const auto& guildId : guildIds)
 		{
-			m_connectedAgents.erase(it);
-			cacheChanged = true;
+			if (const auto it = m_connectedAgents.find(guildId);
+				it != m_connectedAgents.end() && it->second.uuid() == uuid)
+			{
+				m_connectedAgents.erase(it);
+				changedGuildIds.push_back(guildId);
+			}
 		}
 	}
 
-	m_logger.info("Agent {} disconnected (guild ID: {})", uuid, guildId);
-	if (cacheChanged)
+	m_logger.info("Agent {} disconnected from {} guilds", uuid, changedGuildIds.size());
+	for (const auto guildId : changedGuildIds)
 		notifyAgentStatus(guildId, {});
 }
 

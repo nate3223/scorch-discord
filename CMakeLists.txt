@@ -62,6 +62,7 @@ add_executable(${PROJECT_NAME}
 
 	src/Components/Pair/PairComponent.cpp
 	src/Components/Pair/PairComponent.hpp
+	src/Components/Pair/PairComponent_p.hpp
 
 	src/Components/ServerStatus/Server.cpp
 	src/Components/ServerStatus/Server.hpp
