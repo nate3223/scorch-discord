@@ -48,3 +48,4 @@ CMakeUserPresets.json
 vcpkg_installed/
 .vs/
 *.code-workspace
+.vscode

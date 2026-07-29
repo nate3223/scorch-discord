@@ -34,7 +34,8 @@ public:
 	AgentIdentityStore&					m_store;
 
 	mutable std::shared_mutex										m_agentsMutex;
-	boost::unordered_flat_map<std::string, scorch::server::Agent>	m_connectedAgents;
+	boost::unordered_flat_map<std::string, scorch::server::Agent>	m_connectedAgentsByUUID;
+	boost::unordered_flat_map<std::string, scorch::server::Agent>	m_connectedAgentsByGuildId;
 
 	std::mutex														m_subscribersMutex;
 	uint64_t														m_nextSubscriberId = 1;

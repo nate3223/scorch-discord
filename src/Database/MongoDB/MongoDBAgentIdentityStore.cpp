@@ -3,6 +3,7 @@
 #include "Database/DatabaseManager.hpp"
 #include "Database/MongoDB/Document.hpp"
 #include "Database/MongoDB/MongoDBManager.hpp"
+#include "Log.hpp"
 
 #include <bsoncxx/builder/basic/document.hpp>
 
@@ -127,6 +128,10 @@ bool MongoDBAgentIdentityStore::loadAgentFromGuildId(std::string_view guildId, s
 
 bool MongoDBAgentIdentityStore::saveAgentGuildId(std::string_view uuid, std::string_view guildId)
 {
+	std::string previousUUID;
+	if (loadAgentFromGuildId(guildId, previousUUID) && previousUUID == uuid)
+		return true;
+
 	auto client = m_pool.acquire();
 	auto collection = client->database(MongoDB::DATABASE_NAME)[Database::Collection];
 
@@ -134,7 +139,7 @@ bool MongoDBAgentIdentityStore::saveAgentGuildId(std::string_view uuid, std::str
 		kvp(Database::UUID, uuid)
 	);
 
-	auto updateGuildId = make_document(
+	auto addGuildId = make_document(
 		kvp("$addToSet", make_document(
 			kvp(Database::GuildIds, guildId)
 		))
@@ -142,13 +147,60 @@ bool MongoDBAgentIdentityStore::saveAgentGuildId(std::string_view uuid, std::str
 
 	try
 	{
-		auto result = collection.update_one(filter.view(), updateGuildId.view());
-		return result && result->matched_count() > 0;
+		if (! collection.find_one(filter.view()))
+			return false;
+
+		if (! previousUUID.empty())
+		{
+			auto previousFilter = make_document(
+				kvp(Database::UUID, previousUUID)
+			);
+			auto removeGuildId = make_document(
+				kvp("$pull", make_document(
+					kvp(Database::GuildIds, guildId)
+				))
+			);
+
+			auto removed = collection.update_one(previousFilter.view(), removeGuildId.view());
+			if (! removed || removed->matched_count() == 0)
+				return false;
+		}
+
+		auto result = collection.update_one(filter.view(), addGuildId.view());
+		if (result && result->matched_count() > 0)
+			return true;
 	}
-	catch (const std::exception&)
+	catch (const std::exception& error)
 	{
-		return false;
+		Logger::Agents().error(
+			"Failed to assign guild {} to agent {}: {}",
+			guildId,
+			uuid,
+			error.what()
+		);
 	}
+
+	if (! previousUUID.empty())
+	{
+		try
+		{
+			auto previousFilter = make_document(
+				kvp(Database::UUID, previousUUID)
+			);
+			collection.update_one(previousFilter.view(), addGuildId.view());
+		}
+		catch (const std::exception& error)
+		{
+			Logger::Agents().error(
+				"Failed to restore guild {} assignment to agent {}: {}",
+				guildId,
+				previousUUID,
+				error.what()
+			);
+		}
+	}
+
+	return false;
 }
 
 bool MongoDBAgentIdentityStore::loadPublicKey(std::string_view uuid, std::vector<std::byte>& publicKey)
