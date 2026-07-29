@@ -35,4 +35,4 @@ public:
 	std::shared_mutex		m_mutex;
 };
 
-DEFINE_STATIC_CACHE(ServerConfigs, ServerConfig)
+using ServerConfigs = StaticCache<ServerConfig>;

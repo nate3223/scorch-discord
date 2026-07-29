@@ -33,7 +33,7 @@ find_package(Opus CONFIG REQUIRED)
 
 find_package(unofficial-sodium CONFIG REQUIRED)
 
-find_package(Boost REQUIRED COMPONENTS asio)
+find_package(Boost REQUIRED COMPONENTS asio unordered)
 
 if(NOT TARGET spdlog::spdlog)
 	find_package(spdlog REQUIRED)
@@ -89,9 +89,6 @@ add_executable(${PROJECT_NAME}
 	src/DiscordBot/DiscordBot.cpp
 	src/DiscordBot/DiscordBot.hpp
 	src/DiscordBot/DiscordBot_p.hpp
-
-	src/Task/ASIOTaskState.hpp
-	src/Task/ReadyTaskState.hpp
 )
 
 target_compile_features(${PROJECT_NAME}
@@ -102,6 +99,7 @@ target_compile_features(${PROJECT_NAME}
 target_link_libraries(${PROJECT_NAME}
 	PRIVATE
 		Boost::asio
+		Boost::unordered
 		Scorch::Protocol
 		Scorch::Server
 		Opus::opus
@@ -142,3 +140,17 @@ add_custom_command(
         $<TARGET_FILE_DIR:${PROJECT_NAME}>
     COMMENT "Copying server certificates to output directory..."
 )
+
+include(CTest)
+
+if(BUILD_TESTING)
+	add_executable(ScorchCacheTests
+		tests/CacheTests.cpp
+	)
+
+	target_compile_features(ScorchCacheTests PRIVATE cxx_std_23)
+	target_include_directories(ScorchCacheTests PRIVATE src)
+	target_link_libraries(ScorchCacheTests PRIVATE Boost::unordered)
+
+	add_test(NAME ScorchCacheTests COMMAND ScorchCacheTests)
+endif()

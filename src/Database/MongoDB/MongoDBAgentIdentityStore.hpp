@@ -12,9 +12,9 @@ public:
 
 // AgentIdentityStore i/f:
 public:
-	bool	loadAgentGUID(std::string_view uuid, std::string& guid) override;
-	bool	loadAgentFromGUID(std::string_view guid, std::string& uuid) override;
-	bool	saveAgentGUID(std::string_view uuid, std::string_view guid) override;
+	bool	loadAgentGuildId(std::string_view uuid, std::string& guildId) override;
+	bool	loadAgentFromGuildId(std::string_view guildId, std::string& uuid) override;
+	bool	saveAgentGuildId(std::string_view uuid, std::string_view guildId) override;
 
 // scorch::server::IAgentIdentityStore i/f:
 public:

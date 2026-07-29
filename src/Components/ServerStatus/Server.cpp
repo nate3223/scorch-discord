@@ -22,8 +22,6 @@ namespace
 	}
 }
 
-Cache<Server> Servers::g_cache;
-
 const std::regex Server::CustomButton::ButtonPattern		= formatRegexPattern(Server::CustomButton::ButtonPrefix);
 const std::regex Server::Settings::ButtonPattern			= formatRegexPattern(Server::Settings::ButtonPrefix);
 const std::regex Server::AddCustomButton::ButtonPattern		= formatRegexPattern(Server::AddCustomButton::ButtonPrefix);

@@ -71,7 +71,7 @@ dpp::task<void> PairComponent::onPairRequest(const dpp::slashcommand_t& event)
 
 		auto reply = std::format("{} Pairing with Agent `{}` **Approved**!", dpp::unicode_emoji::white_check_mark, agentUUID);
 
-		if (! m_agentsManager.saveAgentGUID(agentUUID, guildId.str()))
+		if (! m_agentsManager.saveAgentGuildId(agentUUID, guildId.str()))
 		{
 			co_await event.co_edit_original_response(dpp::message(std::format("{} Pairing with Agent `{}` **Rejected**!", dpp::unicode_emoji::x, agentUUID)));
 			co_return;

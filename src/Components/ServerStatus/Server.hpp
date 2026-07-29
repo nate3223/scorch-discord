@@ -88,4 +88,4 @@ public:
 	};
 };
 
-DEFINE_STATIC_CACHE(Servers, Server)
+using Servers = StaticCache<Server>;

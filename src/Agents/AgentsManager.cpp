@@ -2,7 +2,6 @@
 #include "AgentsManager_p.hpp"
 
 #include "Database/MongoDB/MongoDBAgentIdentityStore.hpp"
-#include "Task/ReadyTaskState.hpp"
 
 namespace
 {
@@ -20,16 +19,16 @@ std::shared_ptr<scorch::server::PairingCodeRequest>	AgentsManager::confirmPairin
 	return m_p->m_scorchServer.confirmPairing(pairingCode, std::move(info));
 }
 
-bool AgentsManager::saveAgentGUID(std::string_view uuid, std::string_view guid)
+bool AgentsManager::saveAgentGuildId(std::string_view uuid, std::string_view guildId)
 {
-	return m_p->m_store.saveAgentGUID(uuid, guid);
+	return m_p->m_store.saveAgentGuildId(uuid, guildId);
 }
 
-scorch::server::Task<scorch::server::Agent> AgentsManager::findAgent(std::string_view guid) const
+scorch::server::Task<scorch::server::Agent> AgentsManager::findAgent(std::string_view guildId) const
 {
 	std::string uuid;
-	if (! m_p->m_store.loadAgentFromGUID(guid, uuid))
-		return MakeReadyTask(scorch::server::Agent());
+	if (! m_p->m_store.loadAgentFromGuildId(guildId, uuid))
+		return scorch::server::Task<scorch::server::Agent>(scorch::server::Agent());
 
 	return m_p->m_scorchServer.findAgent(uuid);
 }
@@ -53,13 +52,13 @@ AgentsManagerPrivate::AgentsManagerPrivate()
 
 void AgentsManagerPrivate::onAgentConnected(scorch::server::Agent agent)
 {
-	std::string guid;
+	std::string guildId;
 	std::string uuid = agent.uuid();
-	const bool success = m_store.loadAgentGUID(uuid, guid);
+	const bool success = m_store.loadAgentGuildId(uuid, guildId);
 	if (success)
-		m_logger.info("Agent {} connected (GUID: {})", uuid, guid);
+		m_logger.info("Agent {} connected (guild ID: {})", uuid, guildId);
 	else
-		m_logger.error("Agent {} does not have a valid guid", uuid);
+		m_logger.error("Agent {} does not have a valid guild ID", uuid);
 }
 
 void AgentsManagerPrivate::onAgentDisconnected(scorch::server::Agent agent)

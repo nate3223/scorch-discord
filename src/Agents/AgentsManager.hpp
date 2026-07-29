@@ -22,9 +22,9 @@ public:
 	static AgentsManager&	Instance();
 
 	std::shared_ptr<scorch::server::PairingCodeRequest>	confirmPairing(const std::string& pairingCode, std::string info);
-	bool												saveAgentGUID(std::string_view uuid, std::string_view guid);
+	bool												saveAgentGuildId(std::string_view uuid, std::string_view guildId);
 
-	scorch::server::Task<scorch::server::Agent>			findAgent(std::string_view guid) const;
+	scorch::server::Task<scorch::server::Agent>			findAgent(std::string_view guildId) const;
 
 private:
 							AgentsManager();

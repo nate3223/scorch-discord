@@ -141,10 +141,10 @@ void LogComponent::onSetLogChannel(const dpp::slashcommand_t& event)
 
 		const auto guild = (uint64_t)event.command.guild_id;
 
-		LogConfig* config;
+		std::shared_ptr<LogConfig> config;
 		if (config = m_p->m_configs.find(guild); !config)
 		{
-			config = new LogConfig();
+			config = std::make_shared<LogConfig>();
 			config->m_guildID = guild;
 			config->m_channelID = channel;
 
@@ -153,7 +153,7 @@ void LogComponent::onSetLogChannel(const dpp::slashcommand_t& event)
 				config->insertIntoDatabase(*client);
 			}
 
-			m_p->m_configs.store(guild, std::unique_ptr<LogConfig>(config));
+			m_p->m_configs.store(guild, config);
 		}
 		else
 		{
@@ -181,7 +181,7 @@ dpp::task<void> LogComponent::onChannelDelete(const dpp::channel_delete_t& event
 	const auto guild = (uint64_t)event.deleted.guild_id;
 	const auto channel = (uint64_t)event.deleted.id;
 
-	LogConfig* config;
+	std::shared_ptr<LogConfig> config;
 	if (config = m_p->m_configs.find(guild); !config)
 		co_return;
 
@@ -204,7 +204,7 @@ boost::asio::awaitable<void> LogComponent::onComponentLog(const ComponentLogMess
 {
 	if (const auto guildEmbedMessage = dynamic_cast<const GuildEmbedMessage*>(message); guildEmbedMessage != nullptr)
 	{
-		LogConfig* config;
+		std::shared_ptr<LogConfig> config;
 		if (config = m_p->m_configs.find((uint64_t)guildEmbedMessage->guildID); !config)
 			co_return;
 
@@ -228,7 +228,7 @@ boost::asio::awaitable<void> LogComponent::onComponentLog(const ComponentLogMess
 	}
 	else if (const auto guildMessage = dynamic_cast<const GuildMessage*>(message); guildMessage != nullptr)
 	{
-		LogConfig* config;
+		std::shared_ptr<LogConfig> config;
 		if (config = m_p->m_configs.find((uint64_t)guildMessage->guildID); !config)
 			co_return;
 
@@ -240,11 +240,12 @@ boost::asio::awaitable<void> LogComponent::onComponentLog(const ComponentLogMess
 	}
 	else if (const auto broadcastMessage = dynamic_cast<const BroadcastMessage*>(message); broadcastMessage != nullptr)
 	{
-		for (auto it = m_p->m_configs.begin(); it != m_p->m_configs.end(); it++)
+		for (const auto& entry : m_p->m_configs.snapshot())
 		{
-			const auto guild = it->first;
+			const auto& config = entry.second;
+			std::shared_lock lock(config->m_mutex);
 			dpp::message newMessage(broadcastMessage->message);
-			newMessage.set_channel_id((dpp::snowflake)it->second->m_channelID);
+			newMessage.set_channel_id((dpp::snowflake)config->m_channelID);
 			m_bot->message_create(newMessage);
 		}
 	}

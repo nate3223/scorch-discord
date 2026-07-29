@@ -14,7 +14,7 @@ namespace
 		constexpr char Collection[] = "AgentIdentities";
 		constexpr char UUID[]		= "uuid";
 		constexpr char PublicKey[]	= "publicKey";
-		constexpr char GUID[]		= "guid";
+		constexpr char GuildId[]	= "guildId";
 	}
 }
 
@@ -33,19 +33,19 @@ MongoDBAgentIdentityStore::MongoDBAgentIdentityStore()
 
 	collection.create_index(
 		make_document(
-			kvp(Database::GUID, 1)
+			kvp(Database::GuildId, 1)
 		),
 		mongocxx::options::index{}
 	);
 }
 
-bool MongoDBAgentIdentityStore::loadAgentGUID(std::string_view uuid, std::string& guid)
+bool MongoDBAgentIdentityStore::loadAgentGuildId(std::string_view uuid, std::string& guildId)
 {
 	auto client = m_pool.acquire();
 	auto collection = client->database(MongoDB::DATABASE_NAME)[Database::Collection];
 
 	static const auto kProjection = make_document(
-		kvp(Database::GUID, 1),
+		kvp(Database::GuildId, 1),
 		kvp("_id", 0)
 	);
 
@@ -63,11 +63,12 @@ bool MongoDBAgentIdentityStore::loadAgentGUID(std::string_view uuid, std::string
 			return false;
 
 		auto view = result->view();
-		auto elem = view[Database::GUID];
+		auto elem = view[Database::GuildId];
+
 		if (! elem || elem.type() != bsoncxx::type::k_string)
 			return false;
 
-		guid = std::string(elem.get_string().value);
+		guildId = std::string(elem.get_string().value);
 	}
 	catch (const std::exception& e)
 	{
@@ -77,7 +78,7 @@ bool MongoDBAgentIdentityStore::loadAgentGUID(std::string_view uuid, std::string
 	return true;
 }
 
-bool MongoDBAgentIdentityStore::loadAgentFromGUID(std::string_view guid, std::string& uuid)
+bool MongoDBAgentIdentityStore::loadAgentFromGuildId(std::string_view guildId, std::string& uuid)
 {
 	auto client = m_pool.acquire();
 	auto collection = client->database(MongoDB::DATABASE_NAME)[Database::Collection];
@@ -91,7 +92,7 @@ bool MongoDBAgentIdentityStore::loadAgentFromGUID(std::string_view guid, std::st
 	options.projection(kProjection.view());
 
 	auto filter = make_document(
-		kvp(Database::GUID, guid)
+		kvp(Database::GuildId, guildId)
 	);
 
 	try
@@ -116,28 +117,28 @@ bool MongoDBAgentIdentityStore::loadAgentFromGUID(std::string_view guid, std::st
 	return true;
 }
 
-bool MongoDBAgentIdentityStore::saveAgentGUID(std::string_view uuid, std::string_view guid)
+bool MongoDBAgentIdentityStore::saveAgentGuildId(std::string_view uuid, std::string_view guildId)
 {
 	auto client = m_pool.acquire();
 	auto collection = client->database(MongoDB::DATABASE_NAME)[Database::Collection];
 
-	// agent exists, but doesn't have a GUID assigned
+	// Agent exists, but doesn't have a guild ID assigned
 	auto filter = make_document(
 		kvp(Database::UUID, uuid),
-		kvp(Database::GUID, make_document(
+		kvp(Database::GuildId, make_document(
 			kvp("$exists", false)
 		))
 	);
 
-	auto updateGUID = make_document(
+	auto updateGuildId = make_document(
 		kvp("$set", make_document(
-			kvp(Database::GUID, guid)
+			kvp(Database::GuildId, guildId)
 		))
 	);
 
 	try
 	{
-		auto result = collection.update_one(filter.view(), updateGUID.view());
+		auto result = collection.update_one(filter.view(), updateGuildId.view());
 		return result && result->modified_count() > 0;
 	}
 	catch (const std::exception&)
