@@ -195,6 +195,24 @@ dpp::interaction_modal_response Server::getAddCustomButtonModal() const
 		.set_required(true)
 	);
 
+	dpp::component method = dpp::component()
+		.set_label("Method")
+		.set_id(AddCustomButton::Method)
+		.set_type(dpp::cot_selectmenu)
+		.set_required(true)
+		.set_min_values(1)
+		.set_max_values(1);
+	for (const auto supportedMethod : ServerButton::SupportedMethods)
+	{
+		method.add_select_option(
+			dpp::select_option(supportedMethod, supportedMethod)
+				.set_default(supportedMethod == "POST")
+		);
+	}
+
+	modal.add_row();
+	modal.add_component(method);
+
 	return modal;
 }
 

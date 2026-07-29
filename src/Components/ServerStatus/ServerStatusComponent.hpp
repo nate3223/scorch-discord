@@ -31,7 +31,7 @@ public:
 	void			onRemoveServerButton(const dpp::button_click_t& event);
 	void			onRemoveServerSelect(const dpp::select_click_t& event);
 
-	void			onServerCustomButton(const dpp::button_click_t& event);
+	dpp::task<void>	onServerCustomButton(const dpp::button_click_t& event);
 	void			onWidgetSettingsButton(const dpp::button_click_t& event);
 	void			onSelectQueryServer(const dpp::select_click_t& event);
 

@@ -8,6 +8,8 @@
 #include "ServerConfig.hpp"
 
 #include <scorch/server/Agent.hpp>
+#include <scorch/server/HTTPRequest.hpp>
+#include <scorch/server/HTTPResponse.hpp>
 
 #include <algorithm>
 #include <charconv>
@@ -97,7 +99,9 @@ ServerStatusComponent::ServerStatusComponent(DiscordBot& bot)
 	// Status widget items
 	m_buttonCommands.emplace_back(
 		Server::CustomButton::ButtonPrefix,
-		std::bind_front(&ServerStatusComponent::onServerCustomButton, this),
+		ButtonCommand::TaskHandler{[this](const dpp::button_click_t& event) -> dpp::task<void> {
+			co_await onServerCustomButton(event);
+		}},
 		MatchType::PREFIX
 	);
 	m_buttonCommands.emplace_back(
@@ -581,49 +585,116 @@ void ServerStatusComponent::onRemoveServerSelect(const dpp::select_click_t& even
 	m_bot.componentLog(std::move(logMessage));
 }
 
-void ServerStatusComponent::onServerCustomButton(const dpp::button_click_t& event)
+dpp::task<void> ServerStatusComponent::onServerCustomButton(const dpp::button_click_t& event)
 {
 	const auto guild = (uint64_t)event.command.guild_id;
+	event.thinking(true);
 
 	std::shared_ptr<ServerConfig> config;
 	if (config = ServerConfigs::find(guild); !config)
 	{
-		event.reply(dpp::message(ServerStatusWidget::NoChannel).set_flags(dpp::m_ephemeral));
-		return;
+		co_await event.co_edit_original_response(dpp::message(ServerStatusWidget::NoChannel));
+		co_return;
 	}
-
-	std::shared_lock lock(config->mutex());
 
 	std::smatch matches;
 	const auto serverID = Server::ParseServerIDFromComponentID(event.custom_id, Server::CustomButton::ButtonPattern, matches);
 	if (!serverID.has_value())
 	{
-		event.reply(dpp::message(kButtonServerParseError).set_flags(dpp::m_ephemeral));
-		return;
+		co_await event.co_edit_original_response(dpp::message(kButtonServerParseError));
+		co_return;
 	}
 
 	std::shared_ptr<Server> server;
 	if (server = Servers::find(*serverID); !server)
 	{
-		event.reply(dpp::message(kButtonMissingServer).set_flags(dpp::m_ephemeral));
-		return;
+		co_await event.co_edit_original_response(dpp::message(kButtonMissingServer));
+		co_return;
+	}
+	if (server->m_guildID != guild)
+	{
+		Logger::App().warn(
+			"Guild {} attempted to invoke custom button for server {} owned by guild {}",
+			guild,
+			*serverID,
+			server->m_guildID
+		);
+		co_await event.co_edit_original_response(dpp::message(kButtonMissingServer));
+		co_return;
 	}
 
 	auto serverButton = server->getServerButton(matches);
-	if (!serverButton.has_value())
+	if (! serverButton.has_value())
 	{
-		event.reply(dpp::message("Could not find the (possibly deleted) button!").set_flags(dpp::m_ephemeral));
-		return;
+		co_await event.co_edit_original_response(
+			dpp::message("Could not find the (possibly deleted) button!")
+		);
+		co_return;
 	}
 
-	m_bot->request(serverButton->endpoint(), dpp::m_get, [event](const dpp::http_request_completion_t& callback) {
-		if (callback.status < 200 || callback.status >= 300)
-		{
-			return;
-		}
+	const std::string endpoint = serverButton->endpoint();
+	const std::string method = serverButton->method();
+	auto agent = m_p->m_agentsManager.connectedAgent(event.command.guild_id.str());
+	if (! agent.isConnected())
+	{
+		co_await event.co_edit_original_response(
+			dpp::message("The agent is not connected, so the request could not be sent.")
+		);
+		co_return;
+	}
 
-		event.reply();
-	});
+	std::optional<scorch::server::HTTPResponse> response;
+	std::string requestError;
+	try
+	{
+		scorch::server::HTTPRequest request{
+			.url = endpoint,
+			.method = method
+		};
+		response = co_await agent.sendHTTPRequest(std::move(request));
+	}
+	catch (const std::exception& error)
+	{
+		requestError = error.what();
+		Logger::App().error(
+			"Agent {} failed custom button request for guild {} and server {}: {}",
+			agent.uuid(),
+			guild,
+			*serverID,
+			requestError
+		);
+	}
+
+	if (! response)
+	{
+		co_await event.co_edit_original_response(
+			dpp::message("The agent could not complete the request. Check the service logs for details.")
+		);
+		co_return;
+	}
+
+	Logger::App().info(
+		"Agent {} completed custom button request for guild {} and server {} with status {}",
+		agent.uuid(),
+		guild,
+		*serverID,
+		response->status
+	);
+
+	if (response->status < 200 || response->status >= 300)
+	{
+		co_await event.co_edit_original_response(
+			dpp::message(std::format(
+				"The agent completed the request, but the endpoint returned HTTP {}.",
+				response->status
+			))
+		);
+		co_return;
+	}
+
+	co_await event.co_edit_original_response(
+		dpp::message(std::format("Request completed successfully (HTTP {}).", response->status))
+	);
 }
 
 void ServerStatusComponent::onWidgetSettingsButton(const dpp::button_click_t& event)
@@ -917,8 +988,14 @@ void ServerStatusComponent::onAddCustomServerButtonForm(const dpp::form_submit_t
 	const uint64_t id = (uint64_t)event.command.id;
 	const std::string& buttonName = std::get<std::string>(event.components[0].value);
 	const std::string& endpoint = std::get<std::string>(event.components[1].value);
+	const std::string& method = std::get<std::string>(event.components[2].value);
+	if (std::ranges::find(ServerButton::SupportedMethods, method) == ServerButton::SupportedMethods.end())
+	{
+		event.reply(dpp::message("Unsupported HTTP method!").set_flags(dpp::m_ephemeral));
+		return;
+	}
 
-	server->m_buttons.emplace_back(id, buttonName, endpoint, server->m_id);
+	server->m_buttons.emplace_back(id, buttonName, endpoint, method, server->m_id);
 
 	{
 		auto client = m_p->m_databasePool.acquire();
@@ -933,6 +1010,7 @@ void ServerStatusComponent::onAddCustomServerButtonForm(const dpp::form_submit_t
 	logMessage->fields.emplace_back("Server", server->m_name);
 	logMessage->fields.emplace_back("Label", buttonName);
 	logMessage->fields.emplace_back("Endpoint", endpoint);
+	logMessage->fields.emplace_back("Method", method);
 	m_bot.componentLog(std::move(logMessage));
 }
 

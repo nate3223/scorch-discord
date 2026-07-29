@@ -77,6 +77,7 @@ public:
 		static const std::regex FormPattern;
 		static constexpr auto Name				= "ServerSettingsAddCustomButtonModalName";
 		static constexpr auto Endpoint			= "ServerSettingsAddCustonButtonModalEndpoint";
+		static constexpr auto Method			= "ServerSettingsAddCustomButtonModalMethod";
 	};
 	
 	struct RemoveCustomButton
