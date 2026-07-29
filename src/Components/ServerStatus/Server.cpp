@@ -134,8 +134,8 @@ std::vector<dpp::component> Server::getButtonRows() const
 		{
 			row.add_component(
 				dpp::component()
-					.set_label(m_buttons[i + j].m_name)
-					.set_id(m_buttons[i + j].m_componentID)
+					.set_label(m_buttons[i + j].name())
+					.set_id(m_buttons[i + j].componentId())
 					.set_type(dpp::cot_button)
 			);
 		}
@@ -221,7 +221,7 @@ bool Server::onCustomButtonPressed(const std::smatch& matches)
 		return false;
 	}
 
-	if (auto it = std::find_if(m_buttons.begin(), m_buttons.end(), [buttonID](const ServerButton& button) { return button.m_id == buttonID; }); it != m_buttons.end())
+	if (auto it = std::find_if(m_buttons.begin(), m_buttons.end(), [buttonID](const ServerButton& button) { return button.id() == buttonID; }); it != m_buttons.end())
 		return it->press();
 	return false;
 }
@@ -238,7 +238,7 @@ std::optional<ServerButton> Server::getServerButton(const std::smatch& matches)
 		return std::nullopt;
 	}
 
-	if (auto it = std::find_if(m_buttons.begin(), m_buttons.end(), [buttonID](const ServerButton& button) { return button.m_id == buttonID; }); it != m_buttons.end())
+	if (auto it = std::find_if(m_buttons.begin(), m_buttons.end(), [buttonID](const ServerButton& button) { return button.id() == buttonID; }); it != m_buttons.end())
 		return *it;
 
 	return std::nullopt;
@@ -253,6 +253,6 @@ dpp::component Server::getServerButtonsSelectMenuComponent() const
 {
 	dpp::component component = dpp::component().set_type(dpp::cot_selectmenu);
 	for (const auto& button : m_buttons)
-		component.add_select_option(dpp::select_option(button.m_name, std::to_string(button.m_id)));
+		component.add_select_option(dpp::select_option(button.name(), std::to_string(button.id())));
 	return component;
 }

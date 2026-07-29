@@ -67,12 +67,16 @@ add_executable(${PROJECT_NAME}
 	src/Components/ServerStatus/Server.hpp
 	src/Components/ServerStatus/ServerButton.cpp
 	src/Components/ServerStatus/ServerButton.hpp
+	src/Components/ServerStatus/ServerButton_p.hpp
 	src/Components/ServerStatus/ServerConfig.cpp
 	src/Components/ServerStatus/ServerConfig.hpp
+	src/Components/ServerStatus/ServerConfig_p.hpp
 	src/Components/ServerStatus/ServerStatusComponent.cpp
 	src/Components/ServerStatus/ServerStatusComponent.hpp
+	src/Components/ServerStatus/ServerStatusComponent_p.hpp
 	src/Components/ServerStatus/StatusWidget.cpp
 	src/Components/ServerStatus/StatusWidget.hpp
+	src/Components/ServerStatus/StatusWidget_p.hpp
 
 	src/Components/Yippee/YippeeComponent.cpp
 	src/Components/Yippee/YippeeComponent.hpp

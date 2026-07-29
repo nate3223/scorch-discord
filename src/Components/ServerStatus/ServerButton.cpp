@@ -1,4 +1,5 @@
 #include "ServerButton.hpp"
+#include "ServerButton_p.hpp"
 
 #include "Server.hpp"
 
@@ -14,41 +15,86 @@ namespace
 	}
 }
 
-ServerButton::ServerButton(const uint64_t id, const std::string& name, const std::string& endpoint, const uint64_t serverID)
-	: m_id(id)
-	, m_name(name)
-	, m_endpoint(endpoint)
+ServerButton::ServerButton()
+	: m_p(std::make_unique<ServerButtonPrivate>())
 {
-	m_componentID = formatComponentID(serverID);
+
+}
+
+ServerButton::ServerButton(uint64_t id, std::string name, std::string endpoint, uint64_t serverID)
+	: ServerButton()
+{
+	m_p->m_id = id;
+	m_p->m_name = std::move(name);
+	m_p->m_endpoint = std::move(endpoint);
+	m_p->m_componentID = formatComponentId(serverID, id);
 }
 
 ServerButton::ServerButton(const bsoncxx::document::view& view, const uint64_t serverID)
+	: ServerButton()
 {
 	if (const auto& id = view[Database::ID]; id)
-		m_id = (int64_t)id.get_int64().value;
+		m_p->m_id = (int64_t)id.get_int64().value;
 	if (const auto& name = view[Database::Name]; name)
-		m_name = std::string(name.get_string().value);
+		m_p->m_name = std::string(name.get_string().value);
 	if (const auto& endpoint = view[Database::Endpoint]; endpoint)
-		m_endpoint = std::string(endpoint.get_string().value);
-	m_componentID = formatComponentID(serverID);
+		m_p->m_endpoint = std::string(endpoint.get_string().value);
+	m_p->m_componentID = formatComponentId(serverID, m_p->m_id);
 }
+
+ServerButton::ServerButton(const ServerButton& other)
+	: m_p(std::make_unique<ServerButtonPrivate>(*other.m_p))
+{
+}
+
+ServerButton::ServerButton(ServerButton&& other) noexcept = default;
+
+ServerButton& ServerButton::operator=(const ServerButton& other)
+{
+	if (this != &other)
+		m_p = std::make_unique<ServerButtonPrivate>(*other.m_p);
+	return *this;
+}
+
+ServerButton& ServerButton::operator=(ServerButton&& other) noexcept = default;
+
+ServerButton::~ServerButton() = default;
 
 bsoncxx::document::value ServerButton::getValue() const
 {
 	return make_document(
-		kvp(Database::ID, (int64_t)m_id),
-		kvp(Database::Name, m_name.c_str()),
-		kvp(Database::Endpoint, m_endpoint.c_str())
+		kvp(Database::ID, (int64_t)m_p->m_id),
+		kvp(Database::Name, m_p->m_name.c_str()),
+		kvp(Database::Endpoint, m_p->m_endpoint.c_str())
 	);
-}
-
-std::string ServerButton::formatComponentID(const uint64_t serverID)
-{
-	return std::format("{}|{}|{}", Server::CustomButton::ButtonPrefix, std::to_string(serverID), std::to_string(m_id));
 }
 
 bool ServerButton::press()
 {
-	printf("Button %ull pressed to execute at %s\n", m_id, m_endpoint.c_str());
 	return true;
+}
+
+uint64_t ServerButton::id() const noexcept
+{
+	return m_p->m_id;
+}
+
+const std::string& ServerButton::name() const noexcept
+{
+	return m_p->m_name;
+}
+
+const std::string& ServerButton::endpoint() const noexcept
+{
+	return m_p->m_endpoint;
+}
+
+const std::string& ServerButton::componentId() const noexcept
+{
+	return m_p->m_componentID;
+}
+
+std::string ServerButton::formatComponentId(uint64_t serverId, uint64_t id)
+{
+	return std::format("{}|{}|{}", Server::CustomButton::ButtonPrefix, serverId, id);
 }
