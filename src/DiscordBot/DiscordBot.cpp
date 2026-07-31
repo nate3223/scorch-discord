@@ -82,7 +82,7 @@ void DiscordBotPrivate::addComponent(Args&&... args)
 
 	for (SlashCommand& slashCommand : component->getSlashCommands())
 	{
-		m_bot->log(dpp::loglevel::ll_info, std::format("Adding slash command {}", slashCommand.slashCommand.name));
+		m_bot->log(dpp::loglevel::ll_debug, std::format("Adding slash command {}", slashCommand.slashCommand.name));
 		if (m_slashCommands.contains(slashCommand.slashCommand.name))
 			m_bot->log(dpp::loglevel::ll_error, std::format("Command '{}' is already registered!", slashCommand.slashCommand.name));
 		else
@@ -94,14 +94,14 @@ void DiscordBotPrivate::addComponent(Args&&... args)
 		switch (buttonCommand.type)
 		{
 			case (MatchType::EXACT):
-				m_bot->log(dpp::loglevel::ll_info, std::format("Adding button command {}", buttonCommand.id));
+				m_bot->log(dpp::loglevel::ll_debug, std::format("Adding button command {}", buttonCommand.id));
 				if (m_buttonCommands.contains(buttonCommand.id))
 					m_bot->log(dpp::loglevel::ll_error, std::format("Command '{}' is already registered!", buttonCommand.id));
 				else
 					m_buttonCommands[buttonCommand.id] = buttonCommand.handler;
 				break;
 			case (MatchType::PREFIX):
-				m_bot->log(dpp::loglevel::ll_info, std::format("Adding button prefix command {}", buttonCommand.id));
+				m_bot->log(dpp::loglevel::ll_debug, std::format("Adding button prefix command {}", buttonCommand.id));
 				if (auto it = std::find_if(m_buttonPrefixCommands.begin(), m_buttonPrefixCommands.end(), [buttonCommand](const ButtonCommand& command) {
 						return command.id.starts_with(buttonCommand.id) || buttonCommand.id.starts_with(command.id);
 					}); it != m_buttonPrefixCommands.end()
@@ -118,14 +118,14 @@ void DiscordBotPrivate::addComponent(Args&&... args)
 		switch (selectCommand.type)
 		{
 			case (MatchType::EXACT):
-				m_bot->log(dpp::loglevel::ll_info, std::format("Adding select command {}", selectCommand.id));
+				m_bot->log(dpp::loglevel::ll_debug, std::format("Adding select command {}", selectCommand.id));
 				if (m_selectCommands.contains(selectCommand.id))
 					m_bot->log(dpp::loglevel::ll_error, std::format("Command '{}' is already registered!", selectCommand.id));
 				else
 					m_selectCommands[selectCommand.id] = selectCommand.handler;
 				break;
 			case (MatchType::PREFIX):
-				m_bot->log(dpp::loglevel::ll_info, std::format("Adding select prefix command {}", selectCommand.id));
+				m_bot->log(dpp::loglevel::ll_debug, std::format("Adding select prefix command {}", selectCommand.id));
 				if (auto it = std::find_if(m_selectPrefixCommands.begin(), m_selectPrefixCommands.end(), [selectCommand](const SelectCommand& command) {
 					return command.id.starts_with(selectCommand.id) || selectCommand.id.starts_with(command.id);
 					}); it != m_selectPrefixCommands.end()
@@ -143,14 +143,14 @@ void DiscordBotPrivate::addComponent(Args&&... args)
 		switch (formCommand.type)
 		{
 			case (MatchType::EXACT):
-				m_bot->log(dpp::loglevel::ll_info, std::format("Adding form command {}", formCommand.id));
+				m_bot->log(dpp::loglevel::ll_debug, std::format("Adding form command {}", formCommand.id));
 				if (m_formCommands.contains(formCommand.id))
 					m_bot->log(dpp::loglevel::ll_error, std::format("Command '{}' is already registered!", formCommand.id));
 				else
 					m_formCommands[formCommand.id] = formCommand.handler;
 				break;
 			case (MatchType::PREFIX):
-				m_bot->log(dpp::loglevel::ll_info, std::format("Adding form prefix command {}", formCommand.id));
+				m_bot->log(dpp::loglevel::ll_debug, std::format("Adding form prefix command {}", formCommand.id));
 				if (auto it = std::find_if(m_formPrefixCommands.begin(), m_formPrefixCommands.end(), [formCommand](const FormCommand& command) {
 					return command.id.starts_with(formCommand.id) || formCommand.id.starts_with(command.id);
 					}); it != m_formPrefixCommands.end()
@@ -190,8 +190,10 @@ void DiscordBotPrivate::onLog(const dpp::log_t& event)
 		log.error("{}", event.message);
 		break;
 	case dpp::ll_critical:
-	default:
 		log.critical("{}", event.message);
+		break;
+	default:
+		log.warn("Unknown DPP log severity {}: {}", static_cast<int>(event.severity), event.message);
 		break;
 	}
 }
@@ -207,7 +209,17 @@ void DiscordBotPrivate::onReady(const dpp::ready_t& event)
 			std::transform(componentSlashCommands.begin(), componentSlashCommands.end(), std::back_inserter(slashCommands), [](const SlashCommand& command){ return command.slashCommand; });
 		}
 	}
-	m_bot->global_bulk_command_create(slashCommands);
+	const auto commandCount = slashCommands.size();
+	m_bot->global_bulk_command_create(
+		slashCommands,
+		[commandCount](const dpp::confirmation_callback_t& response)
+		{
+			if (response.is_error())
+				Logger::App().error("Failed to register Discord slash commands: {}", response.get_error().message);
+			else
+				Logger::App().info("Registered {} Discord slash commands", commandCount);
+		}
+	);
 }
 
 dpp::task<void> DiscordBotPrivate::onSlashCommand(const dpp::slashcommand_t& event)
@@ -226,7 +238,15 @@ dpp::task<void> DiscordBotPrivate::onSlashCommand(const dpp::slashcommand_t& eve
 		}, slashCommand->second);
 	}
 	else
-		m_bot->log(dpp::loglevel::ll_error, std::format("Unknown slash command '{}'!", commandName));
+		m_bot->log(
+			dpp::loglevel::ll_warning,
+			std::format(
+				"Unknown slash command '{}' from user {} in guild {}",
+				commandName,
+				event.command.usr.id.str(),
+				event.command.guild_id.str()
+			)
+		);
 }
 
 dpp::task<void> DiscordBotPrivate::onButtonClick(const dpp::button_click_t& event)
@@ -255,7 +275,15 @@ dpp::task<void> DiscordBotPrivate::onButtonClick(const dpp::button_click_t& even
 		}, *handler);
 	}
 	else
-		m_bot->log(dpp::loglevel::ll_error, std::format("Unknown button command '{}'!", buttonID));
+		m_bot->log(
+			dpp::loglevel::ll_warning,
+			std::format(
+				"Unknown button command '{}' from user {} in guild {}",
+				buttonID,
+				event.command.usr.id.str(),
+				event.command.guild_id.str()
+			)
+		);
 }
 
 dpp::task<void> DiscordBotPrivate::onSelectClick(const dpp::select_click_t& event)
@@ -284,7 +312,15 @@ dpp::task<void> DiscordBotPrivate::onSelectClick(const dpp::select_click_t& even
 		}, *handler);
 	}
 	else
-		m_bot->log(dpp::loglevel::ll_error, std::format("Unknown select command '{}'!", selectID));
+		m_bot->log(
+			dpp::loglevel::ll_warning,
+			std::format(
+				"Unknown select command '{}' from user {} in guild {}",
+				selectID,
+				event.command.usr.id.str(),
+				event.command.guild_id.str()
+			)
+		);
 }
 
 dpp::task<void> DiscordBotPrivate::onFormSubmit(const dpp::form_submit_t& event)
@@ -313,7 +349,15 @@ dpp::task<void> DiscordBotPrivate::onFormSubmit(const dpp::form_submit_t& event)
 		}, *handler);
 	}
 	else
-		m_bot->log(dpp::loglevel::ll_error, std::format("Unknown form command '{}'!", formID));
+		m_bot->log(
+			dpp::loglevel::ll_warning,
+			std::format(
+				"Unknown form command '{}' from user {} in guild {}",
+				formID,
+				event.command.usr.id.str(),
+				event.command.guild_id.str()
+			)
+		);
 }
 
 dpp::task<void> DiscordBotPrivate::onChannelDelete(const dpp::channel_delete_t& event)
@@ -349,8 +393,15 @@ void DiscordBotPrivate::ComponentLogger::log(std::unique_ptr<ComponentLogMessage
 	boost::asio::co_spawn(
 		m_ioContext,
 		[this, message = std::move(message)]() -> boost::asio::awaitable<void> {
-			for (const auto& component : m_components)
-				co_await component->onComponentLog(message.get());
+			try
+			{
+				for (const auto& component : m_components)
+					co_await component->onComponentLog(message.get());
+			}
+			catch (const std::exception& error)
+			{
+				Logger::App().error("Failed to deliver component log: {}", error.what());
+			}
 		},
 		boost::asio::detached
 	);

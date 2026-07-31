@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parent
 BUILDROOT = ROOT / "build"
 
 def setup_env():
-	load_dotenv()
+	load_dotenv(ROOT / ".env")
 	env = os.environ.copy()
 
 	if platform.system() == "Windows":
@@ -50,6 +50,10 @@ if __name__ == "__main__":
 
 	configure_args = []
 	build_args = ["--config", "Release"]
+
+	for name, value in env.items():
+		if name.startswith("FETCHCONTENT_SOURCE_DIR_") and value:
+			configure_args.append(f"-D{name}={value}")
 
 	if shutil.which("ninja"):
 		configure_args.extend(["-G", "Ninja"])

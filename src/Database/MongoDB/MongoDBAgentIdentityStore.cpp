@@ -79,8 +79,9 @@ bool MongoDBAgentIdentityStore::loadAgentGuildIds(std::string_view uuid, std::ve
 			guildIds.emplace_back(guildId.get_string().value);
 		}
 	}
-	catch (const std::exception& e)
+	catch (const std::exception& error)
 	{
+		Logger::Agents().error("Failed to load guild associations for agent {}: {}", uuid, error.what());
 		return false;
 	}
 
@@ -118,8 +119,9 @@ bool MongoDBAgentIdentityStore::loadAgentFromGuildId(std::string_view guildId, s
 
 		uuid = std::string(elem.get_string().value);
 	}
-	catch (const std::exception& e)
+	catch (const std::exception& error)
 	{
+		Logger::Agents().error("Failed to load agent associated with guild {}: {}", guildId, error.what());
 		return false;
 	}
 
@@ -148,7 +150,10 @@ bool MongoDBAgentIdentityStore::saveAgentGuildId(std::string_view uuid, std::str
 	try
 	{
 		if (! collection.find_one(filter.view()))
+		{
+			Logger::Agents().warn("Cannot assign guild {} to unknown agent {}", guildId, uuid);
 			return false;
+		}
 
 		if (! previousUUID.empty())
 		{
@@ -163,12 +168,22 @@ bool MongoDBAgentIdentityStore::saveAgentGuildId(std::string_view uuid, std::str
 
 			auto removed = collection.update_one(previousFilter.view(), removeGuildId.view());
 			if (! removed || removed->matched_count() == 0)
+			{
+				Logger::Agents().error(
+					"Failed to remove guild {} assignment from agent {} before assigning agent {}",
+					guildId,
+					previousUUID,
+					uuid
+				);
 				return false;
+			}
 		}
 
 		auto result = collection.update_one(filter.view(), addGuildId.view());
 		if (result && result->matched_count() > 0)
 			return true;
+
+		Logger::Agents().error("Failed to assign guild {} to agent {}", guildId, uuid);
 	}
 	catch (const std::exception& error)
 	{
@@ -187,7 +202,15 @@ bool MongoDBAgentIdentityStore::saveAgentGuildId(std::string_view uuid, std::str
 			auto previousFilter = make_document(
 				kvp(Database::UUID, previousUUID)
 			);
-			collection.update_one(previousFilter.view(), addGuildId.view());
+			const auto restored = collection.update_one(previousFilter.view(), addGuildId.view());
+			if (! restored || restored->matched_count() == 0)
+			{
+				Logger::Agents().error(
+					"Failed to restore guild {} assignment to agent {}",
+					guildId,
+					previousUUID
+				);
+			}
 		}
 		catch (const std::exception& error)
 		{
@@ -231,8 +254,9 @@ bool MongoDBAgentIdentityStore::loadPublicKey(std::string_view uuid, std::vector
 			reinterpret_cast<const std::byte*>(binary.bytes + binary.size)
 		);
 	}
-	catch (const std::exception& e)
+	catch (const std::exception& error)
 	{
+		Logger::Agents().error("Failed to load public key for agent {}: {}", uuid, error.what());
 		return false;
 	}
 
@@ -256,11 +280,15 @@ bool MongoDBAgentIdentityStore::savePublicKey(std::string_view uuid, std::span<c
 	try
 	{
 		auto result = collection.insert_one(document.view());
-		return result.has_value();
+		if (result)
+			return true;
+
+		Logger::Agents().error("Failed to save public key for agent {}", uuid);
 	}
-	catch (std::exception& e)
+	catch (const std::exception& error)
 	{
-		// Duplicate UUID
-		return false;
+		Logger::Agents().error("Failed to save public key for agent {}: {}", uuid, error.what());
 	}
+
+	return false;
 }

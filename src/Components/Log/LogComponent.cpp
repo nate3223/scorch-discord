@@ -3,6 +3,7 @@
 
 #include "Database/DatabaseManager.hpp"
 #include "Database/MongoDB/MongoDBManager.hpp"
+#include "Log.hpp"
 
 #include <boost/asio.hpp>
 #include <boost/asio/use_awaitable.hpp>
@@ -135,6 +136,12 @@ void LogComponent::onSetLogChannel(const dpp::slashcommand_t& event)
 	m_bot->channel_get(channel, [this, event, channel](const dpp::confirmation_callback_t& callback) {
 		if (callback.is_error())
 		{
+			Logger::App().warn(
+				"Cannot set log channel {} for guild {}: {}",
+				channel,
+				event.command.guild_id,
+				callback.get_error().message
+			);
 			event.edit_original_response(dpp::message("Cannot see channel. Try checking the channel permissions."));
 			return;
 		}
@@ -169,6 +176,12 @@ void LogComponent::onSetLogChannel(const dpp::slashcommand_t& event)
 
 		std::string msg(std::format("Log channel changed to <#{}>", channel.str()));
 		event.edit_original_response(dpp::message(msg));
+		Logger::App().info(
+			"Log channel for guild {} changed to {} by user {}",
+			guild,
+			channel,
+			event.command.usr.id
+		);
 		auto logMessage = std::make_unique<GuildEmbedMessage>(msg, guild);
 		logMessage->user = event.command.usr;
 		m_bot.componentLog(std::move(logMessage));
@@ -196,6 +209,7 @@ dpp::task<void> LogComponent::onChannelDelete(const dpp::channel_delete_t& event
 	}
 
 	m_p->m_configs.erase(guild);
+	Logger::App().info("Removed deleted log channel {} for guild {}", channel, guild);
 
 	co_return;
 }
@@ -224,7 +238,16 @@ boost::asio::awaitable<void> LogComponent::onComponentLog(const ComponentLogMess
 		for (auto& field : guildEmbedMessage->fields)
 			embed.fields.push_back(std::move(field));
 
-		co_await AwaitDpp(&dpp::cluster::message_create, &(*m_bot), dpp::message(config->m_channelID, std::move(embed)));
+		const auto response = co_await AwaitDpp(&dpp::cluster::message_create, &(*m_bot), dpp::message(config->m_channelID, std::move(embed)));
+		if (response.is_error())
+		{
+			Logger::App().warn(
+				"Failed to send component log to channel {} for guild {}: {}",
+				config->m_channelID,
+				guildEmbedMessage->guildID,
+				response.get_error().message
+			);
+		}
 	}
 	else if (const auto guildMessage = dynamic_cast<const GuildMessage*>(message); guildMessage != nullptr)
 	{
@@ -236,7 +259,16 @@ boost::asio::awaitable<void> LogComponent::onComponentLog(const ComponentLogMess
 
 		dpp::message newMessage(guildMessage->message);
 		newMessage.set_channel_id(config->m_channelID);
-		co_await AwaitDpp(&dpp::cluster::message_create, &(*m_bot), newMessage);
+		const auto response = co_await AwaitDpp(&dpp::cluster::message_create, &(*m_bot), newMessage);
+		if (response.is_error())
+		{
+			Logger::App().warn(
+				"Failed to send component log to channel {} for guild {}: {}",
+				config->m_channelID,
+				guildMessage->guildID,
+				response.get_error().message
+			);
+		}
 	}
 	else if (const auto broadcastMessage = dynamic_cast<const BroadcastMessage*>(message); broadcastMessage != nullptr)
 	{
@@ -246,7 +278,23 @@ boost::asio::awaitable<void> LogComponent::onComponentLog(const ComponentLogMess
 			std::shared_lock lock(config->m_mutex);
 			dpp::message newMessage(broadcastMessage->message);
 			newMessage.set_channel_id((dpp::snowflake)config->m_channelID);
-			m_bot->message_create(newMessage);
+			const auto guild = entry.first;
+			const auto channel = config->m_channelID;
+			m_bot->message_create(
+				newMessage,
+				[guild, channel](const dpp::confirmation_callback_t& response)
+				{
+					if (response.is_error())
+					{
+						Logger::App().warn(
+							"Failed to send broadcast log to channel {} for guild {}: {}",
+							channel,
+							guild,
+							response.get_error().message
+						);
+					}
+				}
+			);
 		}
 	}
 }

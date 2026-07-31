@@ -232,6 +232,12 @@ dpp::task<void> ServerStatusComponent::onSetStatusChannel(const dpp::slashcomman
 	const auto channelResponse = co_await m_bot->co_channel_get(channel);
 	if (channelResponse.is_error())
 	{
+		Logger::App().warn(
+			"Cannot set status channel {} for guild {}: {}",
+			channel,
+			event.command.guild_id,
+			channelResponse.get_error().message
+		);
 		co_await event.co_edit_original_response(
 			dpp::message("Cannot see channel. Try checking the channel permissions.")
 		);
@@ -290,6 +296,12 @@ dpp::task<void> ServerStatusComponent::onSetStatusChannel(const dpp::slashcomman
 	const auto agentResponse = co_await m_bot->co_message_create(agentWidget);
 	if (agentResponse.is_error())
 	{
+		Logger::App().error(
+			"Failed to create agent status widget in channel {} for guild {}: {}",
+			channel,
+			guild,
+			agentResponse.get_error().message
+		);
 		{
 			std::unique_lock lock(config->mutex());
 			if (config->statusWidget().commandID() == commandID)
@@ -318,6 +330,12 @@ dpp::task<void> ServerStatusComponent::onSetStatusChannel(const dpp::slashcomman
 	const auto serverResponse = co_await m_bot->co_message_create(serverWidget);
 	if (serverResponse.is_error())
 	{
+		Logger::App().error(
+			"Failed to create service status widget in channel {} for guild {}: {}",
+			channel,
+			guild,
+			serverResponse.get_error().message
+		);
 		m_bot->message_delete(agentMessage.id, agentMessage.channel_id);
 		{
 			std::unique_lock lock(config->mutex());
@@ -355,6 +373,12 @@ dpp::task<void> ServerStatusComponent::onSetStatusChannel(const dpp::slashcomman
 		channel.str()
 	);
 	co_await event.co_edit_original_response(dpp::message(reply));
+	Logger::App().info(
+		"Status channel for guild {} changed to {} by user {}",
+		guild,
+		channel,
+		event.command.usr.id
+	);
 
 	auto logMessage = std::make_unique<GuildEmbedMessage>(reply, guild);
 	logMessage->user = event.command.usr;
@@ -438,6 +462,12 @@ void ServerStatusComponent::onAddServerForm(const dpp::form_submit_t& event)
 	updateServerStatusWidget(*config);
 
 	event.reply(dpp::message("Server added successfully!").set_flags(dpp::m_ephemeral));
+	Logger::App().info(
+		"Server {} added to guild {} by user {}",
+		id,
+		guild,
+		event.command.usr.id
+	);
 	auto logMessage = std::make_unique<GuildEmbedMessage>("Added new server", config->guildId());
 	logMessage->user = event.command.usr;
 	logMessage->fields.emplace_back("Name", serverName);
@@ -580,6 +610,12 @@ void ServerStatusComponent::onRemoveServerSelect(const dpp::select_click_t& even
 	message += "```";
 
 	event.reply(dpp::message(message).set_flags(dpp::m_ephemeral));
+	Logger::App().info(
+		"Removed {} servers from guild {} by user {}",
+		event.values.size() - serversToDelete.size(),
+		guild,
+		event.command.usr.id
+	);
 	auto logMessage = std::make_unique<GuildEmbedMessage>(message, guild);
 	logMessage->user = event.command.usr;
 	m_bot.componentLog(std::move(logMessage));
@@ -673,16 +709,15 @@ dpp::task<void> ServerStatusComponent::onServerCustomButton(const dpp::button_cl
 		co_return;
 	}
 
-	Logger::App().info(
-		"Agent {} completed custom button request for guild {} and server {} with status {}",
-		agent.uuid(),
-		guild,
-		*serverID,
-		response->status
-	);
-
 	if (response->status < 200 || response->status >= 300)
 	{
+		Logger::App().warn(
+			"Agent {} completed custom button request for guild {} and server {} with HTTP {}",
+			agent.uuid(),
+			guild,
+			*serverID,
+			response->status
+		);
 		co_await event.co_edit_original_response(
 			dpp::message(std::format(
 				"The agent completed the request, but the endpoint returned HTTP {}.",
@@ -691,6 +726,14 @@ dpp::task<void> ServerStatusComponent::onServerCustomButton(const dpp::button_cl
 		);
 		co_return;
 	}
+
+	Logger::App().info(
+		"Agent {} completed custom button request for guild {} and server {} with HTTP {}",
+		agent.uuid(),
+		guild,
+		*serverID,
+		response->status
+	);
 
 	co_await event.co_edit_original_response(
 		dpp::message(std::format("Request completed successfully (HTTP {}).", response->status))
@@ -775,8 +818,15 @@ void ServerStatusComponent::onPinnedServerSelect(const dpp::select_click_t& even
 	{
 		serverID = std::stoull(event.values[0]);
 	}
-	catch (const std::exception& e)
+	catch (const std::exception& error)
 	{
+		Logger::App().warn(
+			"Invalid pinned server ID '{}' submitted by user {} in guild {}: {}",
+			event.values[0],
+			event.command.usr.id,
+			guild,
+			error.what()
+		);
 		event.reply(dpp::message("Failed to parse server ID!").set_flags(dpp::m_ephemeral));
 		return;
 	}
@@ -804,6 +854,12 @@ void ServerStatusComponent::onPinnedServerSelect(const dpp::select_click_t& even
 
 	updateServerStatusWidget(*config);
 
+	Logger::App().info(
+		"Server {} pinned in guild {} by user {}",
+		serverID,
+		guild,
+		event.command.usr.id
+	);
 	event.reply();
 }
 
@@ -831,8 +887,15 @@ void ServerStatusComponent::onSelectQueryServer(const dpp::select_click_t& event
 	{
 		serverID = std::stoull(event.values[0]);
 	}
-	catch (const std::exception& e)
+	catch (const std::exception& error)
 	{
+		Logger::App().warn(
+			"Invalid queried server ID '{}' submitted by user {} in guild {}: {}",
+			event.values[0],
+			event.command.usr.id,
+			guild,
+			error.what()
+		);
 		event.reply(dpp::message("Failed to parse server ID!").set_flags(dpp::m_ephemeral));
 		return;
 	}
@@ -1005,6 +1068,13 @@ void ServerStatusComponent::onAddCustomServerButtonForm(const dpp::form_submit_t
 	updateServerStatusWidget(*config);
 
 	event.reply(dpp::message("Custom button added successfully!").set_flags(dpp::m_ephemeral));
+	Logger::App().info(
+		"Custom button {} added to server {} in guild {} by user {}",
+		id,
+		*serverID,
+		guild,
+		event.command.usr.id
+	);
 	auto logMessage = std::make_unique<GuildEmbedMessage>("Added new custom button", config->guildId());
 	logMessage->user = event.command.usr;
 	logMessage->fields.emplace_back("Server", server->m_name);
@@ -1142,6 +1212,13 @@ void ServerStatusComponent::onRemoveCustomServerButtonSelect(const dpp::select_c
 	message += "```";
 
 	event.reply(dpp::message(message).set_flags(dpp::m_ephemeral));
+	Logger::App().info(
+		"Removed {} custom buttons from server {} in guild {} by user {}",
+		event.values.size() - buttonsToDelete.size(),
+		server->m_id,
+		guild,
+		event.command.usr.id
+	);
 	auto logMessage = std::make_unique<GuildEmbedMessage>(message, guild);
 	logMessage->user = event.command.usr;
 	m_bot.componentLog(std::move(logMessage));
@@ -1158,7 +1235,17 @@ void ServerStatusComponent::updateServerStatusWidget(const ServerConfig& config)
 		std::to_string(config.channelId()),
 		"messages/" + std::to_string(*config.statusWidget().messageID()),
 		dpp::m_patch,
-		widget.build_json(true), [this](dpp::json& j, const dpp::http_request_completion_t& http) { },
+		widget.build_json(true), [guild = config.guildId(), messageId = *config.statusWidget().messageID()](dpp::json&, const dpp::http_request_completion_t& http) {
+			if (http.status < 200 || http.status >= 300)
+			{
+				Logger::App().warn(
+					"Failed to update service status widget {} for guild {}: HTTP {}",
+					messageId,
+					guild,
+					http.status
+				);
+			}
+		},
 		widget.file_data
 	);
 }
@@ -1402,6 +1489,7 @@ dpp::task<void> ServerStatusComponent::onChannelDelete(const dpp::channel_delete
 	}
 
 	ServerConfigs::erase(guild);
+	Logger::App().info("Removed server status configuration after channel {} was deleted in guild {}", channel, guild);
 	m_bot.componentLog(std::make_unique<GuildEmbedMessage>("Server status channel was deleted, removing saved server configurations!", guild));
 }
 
@@ -1435,6 +1523,7 @@ dpp::task<void> ServerStatusComponent::onMessageDelete(const dpp::message_delete
 	}
 
 	ServerConfigs::erase(guild);
+	Logger::App().info("Removed server status configuration after widget {} was deleted in guild {}", event.id, guild);
 	m_bot.componentLog(std::make_unique<GuildEmbedMessage>("Server status widget was deleted, removing saved server configurations!", guild));
 }
 

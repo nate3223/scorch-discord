@@ -84,6 +84,11 @@ dpp::task<void> PairComponent::onPairRequest(const dpp::slashcommand_t& event)
 		auto sharedAgentUUID = m_p->consumeShareCode(pairCode);
 		if (! sharedAgentUUID)
 		{
+			Logger::App().warn(
+				"User {} in guild {} submitted an invalid or expired pairing code",
+				user.id,
+				guildId
+			);
 			event.reply(dpp::message("Invalid or expired pairing code.").set_flags(dpp::m_ephemeral));
 			co_return;
 		}
@@ -116,7 +121,7 @@ dpp::task<void> PairComponent::onPairRequest(const dpp::slashcommand_t& event)
 		catch (const std::exception& error)
 		{
 			shareError = error.what();
-			Logger::App().warn(
+			Logger::App().error(
 				"Agent {} share request failed for Discord server {}: {}",
 				*sharedAgentUUID,
 				guildId,
@@ -135,6 +140,12 @@ dpp::task<void> PairComponent::onPairRequest(const dpp::slashcommand_t& event)
 
 		if (! approved)
 		{
+			Logger::App().info(
+				"Agent {} rejected sharing with guild {} requested by user {}",
+				*sharedAgentUUID,
+				guildId,
+				user.id
+			);
 			co_await event.co_edit_original_response(
 				dpp::message(std::format(
 					"{} Agent `{}` rejected sharing.",
@@ -147,6 +158,11 @@ dpp::task<void> PairComponent::onPairRequest(const dpp::slashcommand_t& event)
 
 		if (! m_p->m_agentsManager.saveAgentGuildId(*sharedAgentUUID, guildId.str()))
 		{
+			Logger::App().error(
+				"Failed to save approved association between agent {} and guild {}",
+				*sharedAgentUUID,
+				guildId
+			);
 			co_await event.co_edit_original_response(
 				dpp::message("The approved agent association could not be saved.")
 			);
@@ -159,6 +175,12 @@ dpp::task<void> PairComponent::onPairRequest(const dpp::slashcommand_t& event)
 			*sharedAgentUUID
 		);
 		co_await event.co_edit_original_response(dpp::message(reply));
+		Logger::App().info(
+			"Agent {} shared with guild {} by user {}",
+			*sharedAgentUUID,
+			guildId,
+			user.id
+		);
 
 		auto logMessage = std::make_unique<GuildEmbedMessage>(reply, guildId);
 		logMessage->user = user;
@@ -178,11 +200,18 @@ dpp::task<void> PairComponent::onPairRequest(const dpp::slashcommand_t& event)
 
 	if (pairingResult == PairingCodeState::Timeout)
 	{
+		Logger::App().warn("Pairing with agent {} timed out for guild {}", agentUUID, guildId);
 		co_await event.co_edit_original_response(dpp::message(std::format("{} Pairing with Agent `{}` **Timed out**!", dpp::unicode_emoji::hourglass, agentUUID)));
 		co_return;
 	}
 	else if (pairingResult != PairingCodeState::Approved)
 	{
+		Logger::App().info(
+			"Agent {} rejected pairing with guild {} requested by user {}",
+			agentUUID,
+			guildId,
+			user.id
+		);
 		co_await event.co_edit_original_response(dpp::message(std::format("{} Pairing with Agent `{}` **Rejected**!", dpp::unicode_emoji::x, agentUUID)));
 		co_return;
 	}
@@ -191,11 +220,22 @@ dpp::task<void> PairComponent::onPairRequest(const dpp::slashcommand_t& event)
 
 	if (! m_p->m_agentsManager.saveAgentGuildId(agentUUID, guildId.str()))
 	{
+		Logger::App().error(
+			"Failed to save approved pairing between agent {} and guild {}",
+			agentUUID,
+			guildId
+		);
 		co_await event.co_edit_original_response(dpp::message(std::format("{} Pairing with Agent `{}` **Rejected**!", dpp::unicode_emoji::x, agentUUID)));
 		co_return;
 	}
 
 	auto response = event.co_edit_original_response(dpp::message(reply));
+	Logger::App().info(
+		"Agent {} paired with guild {} by user {}",
+		agentUUID,
+		guildId,
+		user.id
+	);
 	auto logMessage = std::make_unique<GuildEmbedMessage>(reply, guildId);
 	logMessage->user = user;
 	m_bot.componentLog(std::move(logMessage));

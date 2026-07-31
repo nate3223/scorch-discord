@@ -5,7 +5,16 @@
 #include <spdlog/sinks/rotating_file_sink.h>
 #include <vector>
 
-#include <format>
+#include <string_view>
+
+namespace
+{
+#ifndef NDEBUG
+	constexpr auto kLogLevel = spdlog::level::debug;
+#else
+	constexpr auto kLogLevel = spdlog::level::info;
+#endif
+}
 
 Logger& Logger::Instance()
 {
@@ -45,7 +54,7 @@ Logger::Logger()
 	auto MakeLogger = [&](const char* const name) {
 		auto logger = std::make_shared<spdlog::async_logger>(name, sinks.begin(), sinks.end(), spdlog::thread_pool(), spdlog::async_overflow_policy::block);
 		logger->set_pattern(kPattern);
-		logger->set_level(spdlog::level::level_enum::debug);
+		logger->set_level(kLogLevel);
 		logger->flush_on(spdlog::level::err);
 		spdlog::register_logger(logger);
 		return logger;
@@ -65,6 +74,30 @@ Logger::~Logger()
 
 void MongoDBLogger::operator()(mongocxx::log_level level, bsoncxx::v1::stdx::string_view domain, bsoncxx::v1::stdx::string_view message) noexcept
 {
-	// printf("%s", std::format("{} | {} | {}\n", mongocxx::to_string(level).data(), domain.data(), message.data()).c_str());
+	spdlog::level::level_enum logLevel;
+	switch (level)
+	{
+		case mongocxx::log_level::k_error:		logLevel = spdlog::level::err;		break;
+		case mongocxx::log_level::k_critical:	logLevel = spdlog::level::critical;	break;
+		case mongocxx::log_level::k_warning:	logLevel = spdlog::level::warn;		break;
+		case mongocxx::log_level::k_message:
+		case mongocxx::log_level::k_info:		logLevel = spdlog::level::info;		break;
+		case mongocxx::log_level::k_debug:		logLevel = spdlog::level::debug;	break;
+		case mongocxx::log_level::k_trace:		logLevel = spdlog::level::trace;	break;
+		default:								logLevel = spdlog::level::info;		break;
+	}
+
+	try
+	{
+		Logger::App().log(
+			logLevel,
+			"[MongoDB:{}] {}",
+			std::string_view(domain.data(), domain.size()),
+			std::string_view(message.data(), message.size())
+		);
+	}
+	catch (...)
+	{
+	}
 }
 

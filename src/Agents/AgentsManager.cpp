@@ -139,6 +139,7 @@ AgentsManagerPrivate::AgentsManagerPrivate()
 {
 	m_listenerHandle = m_scorchServer.addAgentListener(this);
 	m_scorchServer.start(::kAgentsPort);
+	m_logger.info("Listening for agents on port {}", ::kAgentsPort);
 }
 
 void AgentsManagerPrivate::onAgentConnected(scorch::server::Agent agent)
@@ -152,7 +153,7 @@ void AgentsManagerPrivate::onAgentConnected(scorch::server::Agent agent)
 	std::vector<std::string> guildIds;
 	if (! m_store.loadAgentGuildIds(uuid, guildIds))
 	{
-		m_logger.info("Agent {} connected without any guild associations", uuid);
+		m_logger.info("Agent {} connected with no guild associations", uuid);
 		return;
 	}
 
